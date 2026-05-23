@@ -51,6 +51,16 @@ interface ForumPost {
   role: string;
 }
 
+interface Notification {
+  id: number;
+  studentEmail: string;
+  lessonTitle: string;
+  status: "checked" | "revision";
+  grade?: number;
+  createdAt: string;
+  read: boolean;
+}
+
 // ─── Mock Data ────────────────────────────────────────────────────────────────
 const MOCK_USERS: User[] = [
   { id: 1, name: "Александр Тренеров", email: "trainer@proservice.ru", role: "trainer", avatar: "АТ" },
@@ -422,7 +432,7 @@ function TrainerDashboard() {
 }
 
 // ─── Student Dashboard ────────────────────────────────────────────────────────
-function StudentDashboard({ user }: { user: User }) {
+function StudentDashboard({ user, notifications, onMarkRead }: { user: User; notifications: Notification[]; onMarkRead: () => void }) {
   return (
     <div className="animate-fade-in space-y-6">
       <div className="rounded-2xl p-6" style={{ background: "linear-gradient(135deg, #1B2A4A 0%, #243558 100%)" }}>
@@ -461,6 +471,39 @@ function StudentDashboard({ user }: { user: User }) {
           </div>
         ))}
       </div>
+
+      {notifications.length > 0 && (
+        <div className="space-y-2">
+          <div className="flex items-center justify-between mb-1">
+            <h3 className="font-bold text-foreground flex items-center gap-2">
+              <Icon name="Bell" size={16} style={{ color: "#F4720B" }} />
+              Уведомления
+            </h3>
+            {notifications.some(n => !n.read) && (
+              <button onClick={onMarkRead} className="text-xs text-muted-foreground hover:text-foreground transition-colors">
+                Отметить все прочитанными
+              </button>
+            )}
+          </div>
+          {notifications.slice().reverse().map(n => (
+            <div key={n.id} className="flex items-start gap-3 p-4 rounded-xl transition-all"
+              style={{ background: n.read ? "#F8F9FB" : "#FFF3E8", border: `1.5px solid ${n.read ? "#EEF1F7" : "#FDDCB5"}` }}>
+              <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
+                style={{ background: n.status === "checked" ? "#ECFDF5" : "#FEF2F2" }}>
+                <Icon name={n.status === "checked" ? "CheckCircle" : "RotateCcw"} size={16}
+                  style={{ color: n.status === "checked" ? "#059669" : "#DC2626" }} />
+              </div>
+              <div className="flex-1">
+                <div className="text-sm font-semibold text-foreground">
+                  {n.status === "checked" ? `Работа принята${n.grade ? ` — оценка ${n.grade}` : ""}` : "Работа отправлена на доработку"}
+                </div>
+                <div className="text-xs text-muted-foreground mt-0.5">{n.lessonTitle} · {n.createdAt}</div>
+              </div>
+              {!n.read && <div className="w-2 h-2 rounded-full shrink-0 mt-1.5" style={{ background: "#F4720B" }} />}
+            </div>
+          ))}
+        </div>
+      )}
 
       <div className="bg-white rounded-2xl p-6 border border-border/50">
         <h3 className="font-bold text-foreground mb-4">Продолжить обучение</h3>
@@ -889,10 +932,15 @@ function CoursesView({ user }: { user: User }) {
 }
 
 // ─── Homeworks View ────────────────────────────────────────────────────────────
-function HomeworksView({ user }: { user: User }) {
+function HomeworksView({ user, onNotify }: { user: User; onNotify?: (n: Omit<Notification, "id" | "createdAt" | "read">) => void }) {
   const [homeworks, setHomeworks] = useState<Homework[]>(MOCK_HOMEWORKS);
   const [selected, setSelected] = useState<Homework | null>(null);
   const [gradeInput, setGradeInput] = useState("");
+
+  const getStudentEmail = (name: string) => {
+    const found = MOCK_USERS.find(u => u.name === name);
+    return found?.email ?? "";
+  };
 
   const handleAccept = () => {
     if (!selected || !gradeInput) return;
@@ -900,6 +948,7 @@ function HomeworksView({ user }: { user: User }) {
       hw.id === selected.id ? { ...hw, status: "checked" as const, grade: Number(gradeInput) } : hw
     );
     setHomeworks(updated);
+    onNotify?.({ studentEmail: getStudentEmail(selected.studentName), lessonTitle: selected.lessonTitle, status: "checked", grade: Number(gradeInput) });
     setSelected(null);
     setGradeInput("");
   };
@@ -910,6 +959,7 @@ function HomeworksView({ user }: { user: User }) {
       hw.id === selected.id ? { ...hw, status: "revision" as const } : hw
     );
     setHomeworks(updated);
+    onNotify?.({ studentEmail: getStudentEmail(selected.studentName), lessonTitle: selected.lessonTitle, status: "revision" });
     setSelected(null);
     setGradeInput("");
   };
@@ -1283,12 +1333,24 @@ export default function Index() {
   const [user, setUser] = useState<User | null>(null);
   const [activeTab, setActiveTab] = useState("dashboard");
   const [presentMode, setPresentMode] = useState(false);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+
+  const addNotification = (n: Omit<Notification, "id" | "createdAt" | "read">) => {
+    setNotifications(prev => [...prev, {
+      ...n,
+      id: Date.now(),
+      createdAt: new Date().toLocaleTimeString("ru", { hour: "2-digit", minute: "2-digit" }),
+      read: false,
+    }]);
+  };
+
+  const markAllRead = (email: string) => {
+    setNotifications(prev => prev.map(n => n.studentEmail === email ? { ...n, read: true } : n));
+  };
 
   const handleLogin = (u: User) => {
     setUser(u);
-    if (u.role === "presentation") {
-      setPresentMode(true);
-    }
+    if (u.role === "presentation") setPresentMode(true);
   };
 
   const handleLogout = () => {
@@ -1300,10 +1362,15 @@ export default function Index() {
   if (!user) return <LoginPage onLogin={handleLogin} />;
   if (presentMode) return <PresentationMode onExit={handleLogout} />;
 
+  const myNotifications = notifications.filter(n => n.studentEmail === user.email);
+  const unreadCount = myNotifications.filter(n => !n.read).length;
+
   const renderTab = () => {
-    if (activeTab === "dashboard") return user.role === "trainer" ? <TrainerDashboard /> : <StudentDashboard user={user} />;
+    if (activeTab === "dashboard") return user.role === "trainer"
+      ? <TrainerDashboard />
+      : <StudentDashboard user={user} notifications={myNotifications} onMarkRead={() => markAllRead(user.email)} />;
     if (activeTab === "courses") return <CoursesView user={user} />;
-    if (activeTab === "homeworks") return <HomeworksView user={user} />;
+    if (activeTab === "homeworks") return <HomeworksView user={user} onNotify={addNotification} />;
     if (activeTab === "students") return <StudentsView />;
     if (activeTab === "forum") return <ForumView user={user} />;
     if (activeTab === "presentation") return <PresentationMode onExit={() => setActiveTab("dashboard")} />;
@@ -1325,6 +1392,14 @@ export default function Index() {
           </div>
           <div className="hidden md:block" />
           <div className="flex items-center gap-3">
+            {user.role === "student" && unreadCount > 0 && (
+              <button onClick={() => { setActiveTab("dashboard"); markAllRead(user.email); }}
+                className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium animate-fade-in"
+                style={{ background: "#FFF3E8", color: "#F4720B" }}>
+                <Icon name="Bell" size={15} />
+                {unreadCount} новых
+              </button>
+            )}
             <div className="w-9 h-9 rounded-full flex items-center justify-center text-white text-sm font-bold" style={{ background: "#1B2A4A" }}>
               {user.avatar}
             </div>
