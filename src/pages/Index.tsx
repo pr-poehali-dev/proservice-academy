@@ -1005,6 +1005,32 @@ function HomeworksView({ user }: { user: User }) {
 
 // ─── Students View ────────────────────────────────────────────────────────────
 function StudentsView() {
+  const [students, setStudents] = useState<User[]>(MOCK_USERS.filter(u => u.role === "student"));
+  const [showAdd, setShowAdd] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [newEmail, setNewEmail] = useState("");
+
+  const handleAddStudent = () => {
+    if (!newName.trim() || !newEmail.trim()) return;
+    const student: User = {
+      id: Date.now(),
+      name: newName,
+      email: newEmail,
+      role: "student",
+      avatar: newName.split(" ").map(n => n[0]).join("").slice(0, 2).toUpperCase(),
+      progress: 0,
+      coursesCompleted: 0,
+    };
+    setStudents(prev => [...prev, student]);
+    setNewName("");
+    setNewEmail("");
+    setShowAdd(false);
+  };
+
+  const handleDeleteStudent = (id: number) => {
+    setStudents(prev => prev.filter(s => s.id !== id));
+  };
+
   return (
     <div className="animate-fade-in space-y-6">
       <div className="flex items-center justify-between">
@@ -1012,27 +1038,76 @@ function StudentsView() {
           <h1 className="text-2xl font-bold">Ученики</h1>
           <p className="text-muted-foreground mt-1">Управление аккаунтами учеников</p>
         </div>
-        <button className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-white font-medium text-sm" style={{ background: "#F4720B" }}>
+        <button onClick={() => setShowAdd(true)} className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-white font-medium text-sm" style={{ background: "#F4720B" }}>
           <Icon name="UserPlus" size={16} />
           Добавить
         </button>
       </div>
 
+      {showAdd && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.5)", backdropFilter: "blur(4px)" }}>
+          <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl animate-scale-in">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-lg font-bold text-foreground">Новый ученик</h3>
+              <button onClick={() => setShowAdd(false)} className="w-8 h-8 rounded-lg flex items-center justify-center text-muted-foreground hover:bg-muted transition-colors">
+                <Icon name="X" size={16} />
+              </button>
+            </div>
+            <div className="space-y-4">
+              <div>
+                <label className="text-sm font-medium text-foreground mb-1.5 block">Имя и фамилия</label>
+                <input value={newName} onChange={e => setNewName(e.target.value)}
+                  placeholder="Иван Мастеров"
+                  className="w-full px-4 py-3 rounded-xl text-foreground text-[15px] outline-none"
+                  style={{ background: "#F8F9FB", border: "1.5px solid #E0E5EF" }} autoFocus />
+              </div>
+              <div>
+                <label className="text-sm font-medium text-foreground mb-1.5 block">Email</label>
+                <input value={newEmail} onChange={e => setNewEmail(e.target.value)}
+                  placeholder="ivan@proservice.ru" type="email"
+                  className="w-full px-4 py-3 rounded-xl text-foreground text-[15px] outline-none"
+                  style={{ background: "#F8F9FB", border: "1.5px solid #E0E5EF" }} />
+              </div>
+              <div className="p-3 rounded-xl text-sm text-muted-foreground" style={{ background: "#F8F9FB" }}>
+                Пароль по умолчанию: <span className="font-mono font-semibold text-foreground">123456</span>
+              </div>
+              <div className="flex gap-3 pt-2">
+                <button onClick={() => setShowAdd(false)} className="flex-1 py-3 rounded-xl font-medium text-foreground" style={{ background: "#F0F3F8" }}>
+                  Отмена
+                </button>
+                <button onClick={handleAddStudent} disabled={!newName.trim() || !newEmail.trim()}
+                  className="flex-1 py-3 rounded-xl font-medium text-white disabled:opacity-40"
+                  style={{ background: "#F4720B" }}>
+                  Добавить
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="space-y-3">
-        {MOCK_USERS.filter(u => u.role === "student").map(student => (
+        {students.map(student => (
           <div key={student.id} className="bg-white rounded-2xl p-5 border border-border/50">
             <div className="flex items-center gap-4 mb-3">
-              <div className="w-12 h-12 rounded-2xl flex items-center justify-center text-white font-bold" style={{ background: "#1B2A4A" }}>
+              <div className="w-12 h-12 rounded-2xl flex items-center justify-center text-white font-bold shrink-0" style={{ background: "#1B2A4A" }}>
                 {student.avatar}
               </div>
-              <div className="flex-1">
+              <div className="flex-1 min-w-0">
                 <div className="font-bold text-foreground">{student.name}</div>
-                <div className="text-sm text-muted-foreground">{student.email}</div>
+                <div className="text-sm text-muted-foreground truncate">{student.email}</div>
               </div>
-              <div className="text-right">
+              <div className="text-right shrink-0">
                 <div className="font-bold text-lg" style={{ color: "#F4720B" }}>{student.progress}%</div>
                 <div className="text-xs text-muted-foreground">{student.coursesCompleted} курса</div>
               </div>
+              <button onClick={() => handleDeleteStudent(student.id)}
+                className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-all"
+                style={{ color: "#DC2626" }}
+                onMouseEnter={e => (e.currentTarget.style.background = "#FEF2F2")}
+                onMouseLeave={e => (e.currentTarget.style.background = "transparent")}>
+                <Icon name="Trash2" size={14} />
+              </button>
             </div>
             <div className="progress-bar">
               <div className="progress-fill" style={{ width: `${student.progress}%` }} />
