@@ -440,6 +440,38 @@ function MobileNav({ user, activeTab, setActiveTab }: { user: User; activeTab: s
 
 // ─── Trainer Dashboard ────────────────────────────────────────────────────────
 function TrainerDashboard() {
+  const [students, setStudents] = useState<User[]>([]);
+  const [coursesCount, setCoursesCount] = useState<number | null>(null);
+  const [homeworks, setHomeworks] = useState<HomeworkWithComment[]>([]);
+  const [forumCount, setForumCount] = useState<number | null>(null);
+
+  useEffect(() => {
+    API.apiGetStudents().then(raw => {
+      setStudents((raw as Record<string, unknown>[]).map(u => ({
+        id: u.id as number, name: u.name as string, email: u.email as string,
+        role: "student" as Role, avatar: u.avatar as string,
+        progress: (u.progress as number) || 0, coursesCompleted: (u.courses_completed as number) || 0,
+      })));
+    }).catch(() => setStudents(MOCK_USERS.filter(u => u.role === "student")));
+
+    API.apiGetCourses().then(raw => setCoursesCount((raw as unknown[]).length))
+      .catch(() => setCoursesCount(0));
+
+    API.apiGetHomeworks().then(raw => {
+      setHomeworks((raw as Record<string, unknown>[]).slice(0, 5).map(r => ({
+        id: r.id as number, studentName: (r.student_name as string) || '',
+        lessonTitle: r.lesson_title as string, submittedAt: '',
+        status: r.status as "pending" | "checked" | "revision",
+        grade: r.grade as number | undefined, text: r.text as string, trainerComment: '',
+      })));
+    }).catch(() => setHomeworks(MOCK_HOMEWORKS as HomeworkWithComment[]));
+
+    API.apiGetForumTopics().then(raw => setForumCount((raw as unknown[]).length))
+      .catch(() => setForumCount(null));
+  }, []);
+
+  const pendingCount = homeworks.filter(h => h.status === "pending").length;
+
   return (
     <div className="animate-fade-in space-y-6">
       <div>
@@ -449,10 +481,10 @@ function TrainerDashboard() {
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {[
-          { label: "Активных учеников", value: "8", icon: "Users", color: "#1B2A4A", light: "#EEF1F7" },
-          { label: "Курсов запущено", value: "2", icon: "BookOpen", color: "#F4720B", light: "#FFF3E8" },
-          { label: "Заданий на проверке", value: "3", icon: "ClipboardCheck", color: "#059669", light: "#ECFDF5" },
-          { label: "Сообщений на форуме", value: "12", icon: "MessageSquare", color: "#7C3AED", light: "#F3F0FF" },
+          { label: "Активных учеников", value: students.length > 0 ? String(students.length) : "—", icon: "Users", color: "#1B2A4A", light: "#EEF1F7" },
+          { label: "Курсов запущено", value: coursesCount !== null ? String(coursesCount) : "—", icon: "BookOpen", color: "#F4720B", light: "#FFF3E8" },
+          { label: "Заданий на проверке", value: String(pendingCount), icon: "ClipboardCheck", color: "#059669", light: "#ECFDF5" },
+          { label: "Тем на форуме", value: forumCount !== null ? String(forumCount) : "—", icon: "MessageSquare", color: "#7C3AED", light: "#F3F0FF" },
         ].map(stat => (
           <div key={stat.label} className="stat-card">
             <div className="w-10 h-10 rounded-xl flex items-center justify-center mb-3" style={{ background: stat.light }}>
@@ -471,7 +503,7 @@ function TrainerDashboard() {
             Прогресс учеников
           </h3>
           <div className="space-y-4">
-            {MOCK_USERS.filter(u => u.role === "student").map(student => (
+            {students.map(student => (
               <div key={student.id}>
                 <div className="flex items-center justify-between mb-1.5">
                   <div className="flex items-center gap-2">
@@ -496,7 +528,7 @@ function TrainerDashboard() {
             Последние задания
           </h3>
           <div className="space-y-3">
-            {MOCK_HOMEWORKS.map(hw => (
+            {homeworks.map(hw => (
               <div key={hw.id} className="flex items-start gap-3 p-3 rounded-xl" style={{ background: "#F8F9FB" }}>
                 <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0" style={{ background: "#1B2A4A" }}>
                   {hw.studentName.split(" ").map((n: string) => n[0]).join("")}
