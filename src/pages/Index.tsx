@@ -1,5 +1,25 @@
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import Icon from "@/components/ui/icon";
+
+// ─── localStorage helpers ──────────────────────────────────────────────────────
+function useLocalStorage<T>(key: string, initial: T): [T, (v: T | ((prev: T) => T)) => void] {
+  const [value, setValue] = useState<T>(() => {
+    try {
+      const stored = localStorage.getItem(key);
+      return stored !== null ? (JSON.parse(stored) as T) : initial;
+    } catch (_e) {
+      return initial;
+    }
+  });
+  const set = useCallback((v: T | ((prev: T) => T)) => {
+    setValue(prev => {
+      const next = typeof v === "function" ? (v as (p: T) => T)(prev) : v;
+      try { localStorage.setItem(key, JSON.stringify(next)); } catch (_e) { /* ignore */ }
+      return next;
+    });
+  }, [key]);
+  return [value, set];
+}
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type Role = "trainer" | "student" | "presentation";
@@ -587,7 +607,7 @@ function StudentDashboard({ user, notifications, onMarkRead }: { user: User; not
 function CoursesView({ user }: { user: User }) {
   const [selectedCourse, setSelectedCourse] = useState<Course | null>(null);
   const [showCreate, setShowCreate] = useState(false);
-  const [courses, setCourses] = useState<Course[]>(MOCK_COURSES);
+  const [courses, setCourses] = useLocalStorage<Course[]>("psa_courses", MOCK_COURSES);
   const [newTitle, setNewTitle] = useState("");
   const [newDesc, setNewDesc] = useState("");
   const [showAddLesson, setShowAddLesson] = useState(false);
@@ -619,6 +639,7 @@ function CoursesView({ user }: { user: User }) {
   const [lessonCheatsheet, setLessonCheatsheet] = useState("");
   const [lessonStatus, setLessonStatus] = useState<"draft" | "published">("published");
   const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
+  const [draggingFromIdx, setDraggingFromIdx] = useState<number | null>(null);
   const [viewingLesson, setViewingLesson] = useState<Lesson | null>(null);
 
   const openEditLesson = (lesson: Lesson) => {
@@ -946,17 +967,23 @@ function CoursesView({ user }: { user: User }) {
             .filter(l => user.role === "trainer" || l.status === "published")
             .map((lesson, idx) => (
             <div key={lesson.id}
-              draggable={user.role === "trainer"}
-              onDragStart={e => e.dataTransfer.setData("idx", String(idx))}
-              onDragOver={e => { e.preventDefault(); setDragOverIdx(idx); }}
-              onDragLeave={() => setDragOverIdx(null)}
-              onDrop={e => { e.preventDefault(); handleDragLesson(Number(e.dataTransfer.getData("idx")), idx); setDragOverIdx(null); }}
+              draggable={user.role === "trainer" && draggingFromIdx === idx}
+              onDragStart={e => { e.dataTransfer.setData("idx", String(idx)); e.dataTransfer.effectAllowed = "move"; }}
+              onDragEnd={() => { setDraggingFromIdx(null); setDragOverIdx(null); }}
+              onDragOver={e => { e.preventDefault(); if (dragOverIdx !== idx) setDragOverIdx(idx); }}
+              onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragOverIdx(null); }}
+              onDrop={e => { e.preventDefault(); if (draggingFromIdx !== null) handleDragLesson(draggingFromIdx, idx); setDragOverIdx(null); setDraggingFromIdx(null); }}
               className="bg-white rounded-2xl p-4 border flex items-center gap-3 transition-all"
-              style={{ borderColor: dragOverIdx === idx ? "#F4720B" : "rgba(0,0,0,0.07)", opacity: lesson.status === "draft" ? 0.75 : 1 }}>
+              style={{ borderColor: dragOverIdx === idx ? "#F4720B" : "rgba(0,0,0,0.07)", opacity: draggingFromIdx === idx ? 0.5 : lesson.status === "draft" ? 0.75 : 1 }}>
 
               {user.role === "trainer" && (
-                <div className="text-muted-foreground cursor-grab shrink-0" title="Перетащить">
-                  <Icon name="GripVertical" size={16} />
+                <div
+                  className="shrink-0 flex items-center justify-center w-7 h-7 rounded-lg transition-colors hover:bg-muted cursor-grab active:cursor-grabbing"
+                  style={{ color: "#9CA3AF" }}
+                  title="Зажмите и перетащите чтобы изменить порядок"
+                  onMouseDown={() => setDraggingFromIdx(idx)}
+                  onMouseUp={() => setDraggingFromIdx(null)}>
+                  <Icon name="GripVertical" size={18} />
                 </div>
               )}
 
@@ -1296,15 +1323,15 @@ function CoursesView({ user }: { user: User }) {
 
 // ─── Homeworks View ────────────────────────────────────────────────────────────
 function HomeworksView({ user, onNotify }: { user: User; onNotify?: (n: Omit<Notification, "id" | "createdAt" | "read">) => void }) {
-  const [homeworks, setHomeworks] = useState<HomeworkWithComment[]>(MOCK_HOMEWORKS as HomeworkWithComment[]);
+  const [homeworks, setHomeworks] = useLocalStorage<HomeworkWithComment[]>("psa_homeworks", MOCK_HOMEWORKS as HomeworkWithComment[]);
   const [selected, setSelected] = useState<HomeworkWithComment | null>(null);
   const [gradeInput, setGradeInput] = useState("");
   const [trainerComment, setTrainerComment] = useState("");
   // student submit
   const [showSubmit, setShowSubmit] = useState(false);
   const [submitLesson, setSubmitLesson] = useState("");
-  const [submitText, setSubmitText] = useState(() => localStorage.getItem("hw_draft") || "");
-  const [studentNotes, setStudentNotes] = useState<Record<string, string>>({});
+  const [submitText, setSubmitText] = useLocalStorage<string>("psa_hw_draft", "");
+  const [studentNotes, setStudentNotes] = useLocalStorage<Record<string, string>>("psa_student_notes", {});
 
   const getStudentEmail = (name: string) => MOCK_USERS.find(u => u.name === name)?.email ?? "";
 
@@ -1332,7 +1359,6 @@ function HomeworksView({ user, onNotify }: { user: User; onNotify?: (n: Omit<Not
     if (!submitLesson.trim() || !submitText.trim()) return;
     const hw: HomeworkWithComment = { id: Date.now(), studentName: user.name, lessonTitle: submitLesson, submittedAt: "только что", status: "pending", text: submitText };
     setHomeworks(prev => [hw, ...prev]);
-    localStorage.removeItem("hw_draft");
     setSubmitText(""); setSubmitLesson(""); setShowSubmit(false);
   };
 
@@ -1457,7 +1483,7 @@ function HomeworksView({ user, onNotify }: { user: User; onNotify?: (n: Omit<Not
               style={{ background: "#F8F9FB", border: "1.5px solid #E0E5EF" }} autoFocus />
             <div>
               <textarea value={submitText}
-                onChange={e => { setSubmitText(e.target.value); localStorage.setItem("hw_draft", e.target.value); }}
+                onChange={e => setSubmitText(e.target.value)}
                 placeholder="Опишите выполненное задание..."
                 rows={5} className="w-full px-4 py-3 rounded-xl text-foreground text-[15px] outline-none resize-none"
                 style={{ background: "#F8F9FB", border: "1.5px solid #E0E5EF" }} />
@@ -1514,15 +1540,15 @@ function HomeworksView({ user, onNotify }: { user: User; onNotify?: (n: Omit<Not
 
 // ─── Students View ────────────────────────────────────────────────────────────
 function StudentsView() {
-  const [students, setStudents] = useState<User[]>(MOCK_USERS.filter(u => u.role === "student"));
+  const [students, setStudents] = useLocalStorage<User[]>("psa_students", MOCK_USERS.filter(u => u.role === "student"));
   const [showAdd, setShowAdd] = useState(false);
   const [newName, setNewName] = useState("");
   const [newEmail, setNewEmail] = useState("");
   const [confirmDelete, setConfirmDelete] = useState<number | null>(null);
   const [generatedPassword, setGeneratedPassword] = useState<string | null>(null);
-  const [studentMeta, setStudentMeta] = useState<Record<number, StudentMeta>>({});
+  const [studentMeta, setStudentMeta] = useLocalStorage<Record<number, StudentMeta>>("psa_student_meta", {});
   const [expandedStudent, setExpandedStudent] = useState<number | null>(null);
-  const [docs, setDocs] = useState<Record<number, StudentDoc[]>>({});
+  const [docs, setDocs] = useLocalStorage<Record<number, StudentDoc[]>>("psa_student_docs", {});
   const [expandedDocs, setExpandedDocs] = useState<number | null>(null);
   const [uploadModal, setUploadModal] = useState<number | null>(null);
   const [docLabel, setDocLabel] = useState("");
@@ -1926,7 +1952,7 @@ function ConfirmDialog({ message, onConfirm, onCancel }: { message: string; onCo
 
 // ─── Forum View ───────────────────────────────────────────────────────────────
 function ForumView({ user }: { user: User }) {
-  const [topics, setTopics] = useState<ForumTopic[]>(MOCK_FORUM);
+  const [topics, setTopics] = useLocalStorage<ForumTopic[]>("psa_forum_topics", MOCK_FORUM);
   const [selectedTopic, setSelectedTopic] = useState<ForumTopic | null>(null);
   const [newMsg, setNewMsg] = useState("");
   const [showNewTopic, setShowNewTopic] = useState(false);
@@ -2245,22 +2271,15 @@ function ForumView({ user }: { user: User }) {
 
 // ─── Watermark ────────────────────────────────────────────────────────────────
 function Watermark({ name }: { name: string }) {
+  const text = `${name} · ProService Academy`;
+  // Генерируем SVG-паттерн с диагональным повторением 150×150px, поворот 45°
+  const svgContent = `<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'><text x='-60' y='100' font-size='18' font-family='sans-serif' font-weight='500' fill='rgba(30,41,59,0.10)' transform='rotate(45 110 110)' letter-spacing='1'>${text}</text></svg>`;
+  const encoded = `url("data:image/svg+xml,${encodeURIComponent(svgContent)}")`;
   return (
-    <div className="pointer-events-none fixed inset-0 overflow-hidden" style={{ zIndex: 10 }}>
-      {Array.from({ length: 20 }).map((_, i) => (
-        <div key={i} className="absolute text-[13px] font-medium select-none"
-          style={{
-            color: "rgba(27,42,74,0.07)",
-            transform: `rotate(-30deg)`,
-            top: `${(i % 5) * 22 + Math.floor(i / 5) * 5}%`,
-            left: `${Math.floor(i / 5) * 28 - 5}%`,
-            whiteSpace: "nowrap",
-            letterSpacing: "0.05em",
-          }}>
-          {name} · ProService Academy
-        </div>
-      ))}
-    </div>
+    <div
+      className="pointer-events-none fixed inset-0 select-none"
+      style={{ zIndex: 10, backgroundImage: encoded, backgroundSize: "220px 220px", backgroundRepeat: "repeat" }}
+    />
   );
 }
 
@@ -2354,10 +2373,15 @@ function PresentationMode({ onExit }: { onExit: () => void }) {
 
 // ─── Main App ─────────────────────────────────────────────────────────────────
 export default function Index() {
-  const [user, setUser] = useState<User | null>(null);
-  const [activeTab, setActiveTab] = useState("dashboard");
+  const [user, setUser] = useLocalStorage<User | null>("psa_user", null);
+  const [activeTab, setActiveTab] = useLocalStorage<string>("psa_tab", "dashboard");
   const [presentMode, setPresentMode] = useState(false);
-  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [notifications, setNotifications] = useLocalStorage<Notification[]>("psa_notifications", []);
+
+  // Восстанавливаем presentMode если пользователь — презентация
+  useEffect(() => {
+    if (user?.role === "presentation") setPresentMode(true);
+  }, []);
 
   const addNotification = (n: Omit<Notification, "id" | "createdAt" | "read">) => {
     setNotifications(prev => [...prev, {
