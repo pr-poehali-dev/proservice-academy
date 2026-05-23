@@ -21,9 +21,10 @@ interface Lesson {
   completed: boolean;
   hasHomework: boolean;
   status: "draft" | "published";
-  content?: string;
-  homework?: string;
-  cheatsheet?: string;
+  content?: string;   // только для тренера (подготовка)
+  summary?: string;   // опорный конспект — видит ученик
+  homework?: string;  // домашнее задание
+  cheatsheet?: string; // шпаргалка
   order: number;
 }
 
@@ -121,11 +122,11 @@ const MOCK_COURSES: Course[] = [
     progress: 65,
     studentsCount: 8,
     lessons: [
-      { id: 1, title: "Роль мастера-приёмщика в автосервисе", duration: "45 мин", completed: true, hasHomework: true, status: "published", order: 1, content: "Мастер-приёмщик — ключевая фигура автосервиса. Он первый контактирует с клиентом и формирует впечатление о всей компании.", homework: "Опишите 3 ситуации из своей практики, когда первое впечатление определило исход визита клиента.", cheatsheet: "Формула: улыбка + имя клиента + зрительный контакт = доверие с первых секунд." },
-      { id: 2, title: "Приём автомобиля: чек-лист осмотра", duration: "60 мин", completed: true, hasHomework: true, status: "published", order: 2, content: "Правильный приём автомобиля — основа прозрачности сервиса. Осмотр всегда проводится в присутствии клиента.", homework: "Проведите 3 приёма по чек-листу и опишите реакцию клиентов.", cheatsheet: "Ключ: фотографируй каждый дефект ДО начала работ. Это защита от претензий." },
-      { id: 3, title: "Работа с клиентскими возражениями", duration: "50 мин", completed: false, hasHomework: true, status: "published", order: 3, content: "Возражения клиента — это не отказ, а запрос на дополнительную информацию.", homework: "Запишите 5 возражений, которые вы слышали на этой неделе, и ваши ответы на них.", cheatsheet: "Метод ДДД: Да (согласие) → Детали (уточнение) → Доводы (аргументы)." },
-      { id: 4, title: "Оформление заказ-наряда", duration: "40 мин", completed: false, hasHomework: false, status: "published", order: 4, content: "Заказ-наряд — юридический документ. Каждая работа должна быть согласована с клиентом письменно.", cheatsheet: "Никогда не начинай работы без подписи клиента. Даже «срочные»." },
-      { id: 5, title: "Выдача автомобиля и постпродажный сервис", duration: "35 мин", completed: false, hasHomework: true, status: "draft", order: 5, content: "Выдача — последний шанс сформировать лояльного клиента. Объясни что сделано и почему.", homework: "Опишите идеальный сценарий выдачи автомобиля клиенту.", cheatsheet: "Правило: клиент уходит с пониманием что сделано, что запланировано и когда звонить." },
+      { id: 1, title: "Роль мастера-приёмщика в автосервисе", duration: "45 мин", completed: true, hasHomework: true, status: "published", order: 1, content: "Мастер-приёмщик — ключевая фигура автосервиса. Он первый контактирует с клиентом и формирует впечатление о всей компании.", summary: "Мастер-приёмщик — лицо сервиса. Первое впечатление формируется в первые 30 секунд.\n\nТри ключевые роли:\n• Представитель компании перед клиентом\n• Технический переводчик (объясняет сложное простым языком)\n• Организатор процесса ремонта", homework: "Опишите 3 ситуации из своей практики, когда первое впечатление определило исход визита клиента.", cheatsheet: "Формула: улыбка + имя клиента + зрительный контакт = доверие с первых секунд.\n\nПравило 3П: Приветствие → Представление → Предложение помочь" },
+      { id: 2, title: "Приём автомобиля: чек-лист осмотра", duration: "60 мин", completed: true, hasHomework: true, status: "published", order: 2, content: "Правильный приём автомобиля — основа прозрачности сервиса. Осмотр всегда проводится в присутствии клиента.", summary: "Приём автомобиля всегда проводится вместе с клиентом — это защита обеих сторон.\n\nПорядок осмотра:\n1. Внешний обход по кругу (фото каждого дефекта)\n2. Проверка уровней жидкостей\n3. Осмотр салона\n4. Фиксация в акте приёма\n5. Подпись клиента", homework: "Проведите 3 приёма по чек-листу и опишите реакцию клиентов.", cheatsheet: "Ключ: фотографируй каждый дефект ДО начала работ.\n\nЧек-лист осмотра:\n☐ Кузов (царапины, вмятины, сколы)\n☐ Стёкла\n☐ Шины и диски\n☐ Уровень масла / ОЖ / тормозной жидкости\n☐ Состояние салона\n☐ Документы и ключи" },
+      { id: 3, title: "Работа с клиентскими возражениями", duration: "50 мин", completed: false, hasHomework: true, status: "published", order: 3, content: "Возражения клиента — это не отказ, а запрос на дополнительную информацию.", summary: "Возражение — это не отказ, а запрос на информацию. Клиент сомневается — значит, он заинтересован.\n\nОсновные типы возражений:\n• «Это дорого» — нужна демонстрация ценности\n• «Сделайте только необходимое» — нужно объяснить риски\n• «Я подумаю» — нужно понять истинную причину", homework: "Запишите 5 возражений, которые вы слышали на этой неделе, и ваши ответы на них.", cheatsheet: "Метод ДДД:\nДа (согласие с чувством) → Детали (уточняющий вопрос) → Доводы (аргументы)\n\nПример: «Да, понимаю вас. Скажите, а с чем сравниваете цену? Дело в том, что...»" },
+      { id: 4, title: "Оформление заказ-наряда", duration: "40 мин", completed: false, hasHomework: false, status: "published", order: 4, content: "Заказ-наряд — юридический документ. Каждая работа должна быть согласована с клиентом письменно.", summary: "Заказ-наряд — юридически значимый документ. Без него любая претензия клиента может быть удовлетворена судом.\n\nОбязательные элементы:\n• Перечень работ с ценами\n• Запчасти и материалы\n• Сроки выполнения\n• Подпись клиента на каждом изменении", cheatsheet: "Никогда не начинай работы без подписи клиента. Даже «срочные».\n\nЕсли цена изменилась — звони клиенту, фиксируй устное согласие и время звонка в наряде." },
+      { id: 5, title: "Выдача автомобиля и постпродажный сервис", duration: "35 мин", completed: false, hasHomework: true, status: "draft", order: 5, content: "Выдача — последний шанс сформировать лояльного клиента. Объясни что сделано и почему.", summary: "Выдача — финальный момент, который определяет вернётся ли клиент.\n\nСтруктура выдачи:\n1. Показать что сделано (физически, у машины)\n2. Объяснить зачем это было нужно\n3. Сообщить что нужно будет сделать в следующий раз\n4. Договориться о следующем визите", homework: "Опишите идеальный сценарий выдачи автомобиля клиенту.", cheatsheet: "Правило: клиент уходит с пониманием что сделано, что запланировано и когда звонить.\n\nФинальная фраза: «Если возникнут вопросы — звоните напрямую мне.» — строит личную лояльность." },
     ]
   },
   {
@@ -613,6 +614,7 @@ function CoursesView({ user }: { user: User }) {
   const [lessonDuration, setLessonDuration] = useState("");
   const [lessonHasHomework, setLessonHasHomework] = useState(false);
   const [lessonContent, setLessonContent] = useState("");
+  const [lessonSummary, setLessonSummary] = useState("");
   const [lessonHomework, setLessonHomework] = useState("");
   const [lessonCheatsheet, setLessonCheatsheet] = useState("");
   const [lessonStatus, setLessonStatus] = useState<"draft" | "published">("published");
@@ -625,6 +627,7 @@ function CoursesView({ user }: { user: User }) {
     setLessonDuration(lesson.duration);
     setLessonHasHomework(lesson.hasHomework);
     setLessonContent(lesson.content || "");
+    setLessonSummary(lesson.summary || "");
     setLessonHomework(lesson.homework || "");
     setLessonCheatsheet(lesson.cheatsheet || "");
     setLessonStatus(lesson.status || "published");
@@ -635,14 +638,14 @@ function CoursesView({ user }: { user: User }) {
     const updated = {
       ...selectedCourse,
       lessons: selectedCourse.lessons.map(l =>
-        l.id === editingLesson.id ? { ...l, title: lessonTitle, duration: lessonDuration || "30 мин", hasHomework: lessonHasHomework, content: lessonContent, homework: lessonHomework, cheatsheet: lessonCheatsheet, status: lessonStatus } : l
+        l.id === editingLesson.id ? { ...l, title: lessonTitle, duration: lessonDuration || "30 мин", hasHomework: lessonHasHomework, content: lessonContent, summary: lessonSummary, homework: lessonHomework, cheatsheet: lessonCheatsheet, status: lessonStatus } : l
       ),
     };
     setCourses(prev => prev.map(c => c.id === selectedCourse.id ? updated : c));
     setSelectedCourse(updated);
     setEditingLesson(null);
     setLessonTitle(""); setLessonDuration(""); setLessonHasHomework(false);
-    setLessonContent(""); setLessonHomework(""); setLessonCheatsheet("");
+    setLessonContent(""); setLessonSummary(""); setLessonHomework(""); setLessonCheatsheet("");
   };
 
   const handleToggleLessonStatus = (lessonId: number) => {
@@ -697,6 +700,7 @@ function CoursesView({ user }: { user: User }) {
       status: lessonStatus,
       order: selectedCourse.lessons.length + 1,
       content: lessonContent,
+      summary: lessonSummary,
       homework: lessonHomework,
       cheatsheet: lessonCheatsheet,
     };
@@ -704,7 +708,7 @@ function CoursesView({ user }: { user: User }) {
     setCourses(prev => prev.map(c => c.id === selectedCourse.id ? updated : c));
     setSelectedCourse(updated);
     setLessonTitle(""); setLessonDuration(""); setLessonHasHomework(false);
-    setLessonContent(""); setLessonHomework(""); setLessonCheatsheet("");
+    setLessonContent(""); setLessonSummary(""); setLessonHomework(""); setLessonCheatsheet("");
     setShowAddLesson(false);
   };
 
@@ -782,8 +786,8 @@ function CoursesView({ user }: { user: User }) {
           )}
         </div>
 
-        {/* Просмотр урока */}
-        {viewingLesson && (
+        {/* Просмотр урока — тренер видит модалку, ученик видит встроенную страницу */}
+        {viewingLesson && user.role === "trainer" && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.6)", backdropFilter: "blur(4px)" }}>
             <div className="bg-white rounded-2xl w-full max-w-2xl shadow-2xl animate-scale-in overflow-hidden max-h-[90vh] flex flex-col">
               <div className="flex items-center justify-between p-6 border-b border-border/50">
@@ -801,8 +805,18 @@ function CoursesView({ user }: { user: User }) {
               <div className="overflow-y-auto p-6 space-y-5 no-copy" onContextMenu={e => e.preventDefault()}>
                 {viewingLesson.content && (
                   <div>
-                    <div className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wide">Содержание урока</div>
+                    <div className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wide flex items-center gap-1.5">
+                      <Icon name="BookOpen" size={12} />Основной контент (только для тренера)
+                    </div>
                     <div className="text-foreground leading-relaxed whitespace-pre-wrap">{viewingLesson.content}</div>
+                  </div>
+                )}
+                {viewingLesson.summary && (
+                  <div className="p-4 rounded-xl" style={{ background: "#EEF1F7", border: "1.5px solid #D0D8EA" }}>
+                    <div className="text-xs font-semibold mb-2 flex items-center gap-1.5" style={{ color: "#1B2A4A" }}>
+                      <Icon name="List" size={12} />Опорный конспект (видит ученик)
+                    </div>
+                    <div className="text-foreground leading-relaxed text-sm whitespace-pre-wrap">{viewingLesson.summary}</div>
                   </div>
                 )}
                 {viewingLesson.hasHomework && viewingLesson.homework && (
@@ -813,10 +827,10 @@ function CoursesView({ user }: { user: User }) {
                     <div className="text-foreground leading-relaxed text-sm whitespace-pre-wrap">{viewingLesson.homework}</div>
                   </div>
                 )}
-                {viewingLesson.cheatsheet && (viewingLesson.completed || user.role === "trainer") && (
+                {viewingLesson.cheatsheet && (
                   <div className="p-4 rounded-xl" style={{ background: "#ECFDF5", border: "1.5px solid #A7F3D0" }}>
                     <div className="text-xs font-semibold mb-2 flex items-center gap-1.5" style={{ color: "#059669" }}>
-                      <Icon name="Lightbulb" size={12} />Шпаргалка {user.role !== "trainer" && "(доступна после прохождения)"}
+                      <Icon name="Lightbulb" size={12} />Шпаргалка
                     </div>
                     <div className="text-foreground leading-relaxed text-sm whitespace-pre-wrap">{viewingLesson.cheatsheet}</div>
                   </div>
@@ -826,6 +840,107 @@ function CoursesView({ user }: { user: User }) {
           </div>
         )}
 
+        {/* Страница урока для ученика */}
+        {viewingLesson && user.role === "student" && (
+          <div className="animate-fade-in space-y-4">
+            <button onClick={() => setViewingLesson(null)} className="flex items-center gap-2 text-muted-foreground hover:text-foreground text-sm font-medium transition-colors">
+              <Icon name="ArrowLeft" size={16} />
+              Назад к урокам
+            </button>
+
+            {/* Заголовок */}
+            <div className="rounded-2xl p-6 no-copy" style={{ background: "linear-gradient(135deg, #1B2A4A 0%, #243558 100%)" }} onContextMenu={e => e.preventDefault()}>
+              <div className="flex items-center gap-2 mb-3">
+                {viewingLesson.completed && (
+                  <span className="text-xs px-2.5 py-1 rounded-full font-semibold" style={{ background: "rgba(5,150,105,0.3)", color: "#6EE7B7" }}>
+                    ✓ Пройден
+                  </span>
+                )}
+              </div>
+              <h2 className="text-white text-2xl font-bold mb-2">{viewingLesson.title}</h2>
+              <div className="flex items-center gap-4 text-white/60 text-sm">
+                <span className="flex items-center gap-1.5"><Icon name="Clock" size={14} />{viewingLesson.duration}</span>
+                {viewingLesson.hasHomework && <span className="flex items-center gap-1.5"><Icon name="FileText" size={14} />Есть домашнее задание</span>}
+              </div>
+            </div>
+
+            {/* Блок 1 — Опорный конспект */}
+            {viewingLesson.summary ? (
+              <div className="bg-white rounded-2xl p-6 border border-border/50 no-copy" onContextMenu={e => e.preventDefault()}>
+                <h3 className="font-bold text-foreground mb-4 flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: "#EEF1F7" }}>
+                    <Icon name="List" size={16} style={{ color: "#1B2A4A" }} />
+                  </div>
+                  Опорный конспект
+                </h3>
+                <div className="text-foreground leading-relaxed whitespace-pre-wrap text-[15px]">{viewingLesson.summary}</div>
+              </div>
+            ) : (
+              <div className="bg-white rounded-2xl p-6 border border-border/50 text-center text-muted-foreground">
+                <Icon name="List" size={32} className="mx-auto mb-2 opacity-30" />
+                <p className="text-sm">Тренер ещё не добавил опорный конспект к этому уроку</p>
+              </div>
+            )}
+
+            {/* Блок 2 — Шпаргалка */}
+            {viewingLesson.cheatsheet ? (
+              <div className="rounded-2xl p-6 no-copy" style={{ background: "#ECFDF5", border: "1.5px solid #A7F3D0" }} onContextMenu={e => e.preventDefault()}>
+                <h3 className="font-bold mb-4 flex items-center gap-2" style={{ color: "#059669" }}>
+                  <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: "rgba(5,150,105,0.15)" }}>
+                    <Icon name="Lightbulb" size={16} style={{ color: "#059669" }} />
+                  </div>
+                  Шпаргалка
+                </h3>
+                <div className="leading-relaxed whitespace-pre-wrap text-[15px]" style={{ color: "#065F46" }}>{viewingLesson.cheatsheet}</div>
+              </div>
+            ) : (
+              <div className="rounded-2xl p-5 text-center" style={{ background: "#F0FFF4", border: "1.5px dashed #A7F3D0" }}>
+                <p className="text-sm" style={{ color: "#059669" }}>Шпаргалка будет добавлена тренером</p>
+              </div>
+            )}
+
+            {/* Домашнее задание */}
+            {viewingLesson.hasHomework && viewingLesson.homework && (
+              <div className="rounded-2xl p-6 no-copy" style={{ background: "#FFF3E8", border: "1.5px solid #FDDCB5" }} onContextMenu={e => e.preventDefault()}>
+                <h3 className="font-bold mb-4 flex items-center gap-2" style={{ color: "#F4720B" }}>
+                  <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: "rgba(244,114,11,0.15)" }}>
+                    <Icon name="FileText" size={16} style={{ color: "#F4720B" }} />
+                  </div>
+                  Домашнее задание
+                </h3>
+                <div className="leading-relaxed whitespace-pre-wrap text-[15px] text-foreground">{viewingLesson.homework}</div>
+              </div>
+            )}
+
+            {/* Кнопка «Отметить как изученный» */}
+            {!viewingLesson.completed ? (
+              <button
+                onClick={() => {
+                  const updated = {
+                    ...selectedCourse,
+                    lessons: selectedCourse.lessons.map(l => l.id === viewingLesson.id ? { ...l, completed: true } : l),
+                  };
+                  setCourses(prev => prev.map(c => c.id === selectedCourse.id ? updated : c));
+                  setSelectedCourse(updated);
+                  setViewingLesson({ ...viewingLesson, completed: true });
+                }}
+                className="w-full py-4 rounded-2xl font-semibold text-white text-[15px] transition-all hover:opacity-90 active:scale-95 flex items-center justify-center gap-2"
+                style={{ background: "linear-gradient(135deg, #1B2A4A 0%, #243558 100%)" }}>
+                <Icon name="CheckCircle" size={20} />
+                Отметить как изученный
+              </button>
+            ) : (
+              <div className="w-full py-4 rounded-2xl font-semibold text-center text-[15px] flex items-center justify-center gap-2"
+                style={{ background: "#ECFDF5", color: "#059669", border: "2px solid #A7F3D0" }}>
+                <Icon name="CheckCircle" size={20} />
+                Урок пройден
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Список уроков */}
+        {!viewingLesson && (
         <div className="space-y-2">
           {selectedCourse.lessons
             .filter(l => user.role === "trainer" || l.status === "published")
@@ -885,13 +1000,21 @@ function CoursesView({ user }: { user: User }) {
                     <Icon name="Trash2" size={14} />
                   </button>
                 </div>
-              ) : lesson.completed
-                ? <span className="text-xs px-2 py-1 rounded-full font-medium shrink-0" style={{ background: "#ECFDF5", color: "#059669" }}>Пройден</span>
-                : <button className="text-xs px-3 py-1.5 rounded-lg font-medium text-white shrink-0" style={{ background: "#F4720B" }}>Начать</button>
-              }
+              ) : (
+                <button
+                  onClick={() => setViewingLesson(lesson)}
+                  className="text-xs px-3 py-1.5 rounded-lg font-medium shrink-0 transition-all hover:opacity-80"
+                  style={lesson.completed
+                    ? { background: "#ECFDF5", color: "#059669" }
+                    : { background: "#F4720B", color: "white" }
+                  }>
+                  {lesson.completed ? "Пройден" : "Начать"}
+                </button>
+              )}
             </div>
           ))}
         </div>
+        )}
 
         {editingLesson && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.5)", backdropFilter: "blur(4px)" }}>
@@ -938,12 +1061,23 @@ function CoursesView({ user }: { user: User }) {
                 </div>
                 <div>
                   <label className="text-sm font-medium text-foreground mb-1.5 block flex items-center gap-1.5">
-                    <Icon name="BookOpen" size={13} />Основной контент урока
+                    <Icon name="BookOpen" size={13} />Основной контент
+                    <span className="text-xs font-normal text-muted-foreground">(только для тренера, подготовка к занятию)</span>
                   </label>
                   <textarea value={lessonContent} onChange={e => setLessonContent(e.target.value)}
-                    placeholder="Текст урока, объяснения, примеры..."
-                    rows={4} className="w-full px-3 py-2.5 rounded-xl text-foreground text-sm outline-none resize-none"
+                    placeholder="Конспект занятия, сценарий, методические заметки..."
+                    rows={3} className="w-full px-3 py-2.5 rounded-xl text-foreground text-sm outline-none resize-none"
                     style={{ background: "#F8F9FB", border: "1.5px solid #E0E5EF" }} />
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-foreground mb-1.5 block flex items-center gap-1.5">
+                    <Icon name="List" size={13} style={{ color: "#1B2A4A" }} />Опорный конспект
+                    <span className="text-xs font-normal text-muted-foreground">(видит ученик — ключевые мысли урока)</span>
+                  </label>
+                  <textarea value={lessonSummary} onChange={e => setLessonSummary(e.target.value)}
+                    placeholder="Ключевые тезисы, выводы, структура урока для ученика..."
+                    rows={4} className="w-full px-3 py-2.5 rounded-xl text-foreground text-sm outline-none resize-none"
+                    style={{ background: "#EEF1F7", border: "1.5px solid #D0D8EA" }} />
                 </div>
                 {lessonHasHomework && (
                   <div>
@@ -959,10 +1093,10 @@ function CoursesView({ user }: { user: User }) {
                 <div>
                   <label className="text-sm font-medium text-foreground mb-1.5 block flex items-center gap-1.5">
                     <Icon name="Lightbulb" size={13} style={{ color: "#059669" }} />Шпаргалка
-                    <span className="text-xs font-normal text-muted-foreground">(видна после прохождения)</span>
+                    <span className="text-xs font-normal text-muted-foreground">(готовые формулы и фразы для работы)</span>
                   </label>
                   <textarea value={lessonCheatsheet} onChange={e => setLessonCheatsheet(e.target.value)}
-                    placeholder="Ключевые тезисы, формулы, подсказки..."
+                    placeholder="Готовые фразы, таблицы, алгоритмы для практики..."
                     rows={3} className="w-full px-3 py-2.5 rounded-xl text-foreground text-sm outline-none resize-none"
                     style={{ background: "#ECFDF5", border: "1.5px solid #A7F3D0" }} />
                 </div>
@@ -1027,10 +1161,16 @@ function CoursesView({ user }: { user: User }) {
                   </div>
                 </div>
                 <div>
-                  <label className="text-sm font-medium text-foreground mb-1.5 block"><Icon name="BookOpen" size={13} className="inline mr-1" />Основной контент</label>
-                  <textarea value={lessonContent} onChange={e => setLessonContent(e.target.value)} placeholder="Текст урока..."
-                    rows={4} className="w-full px-3 py-2.5 rounded-xl text-foreground text-sm outline-none resize-none"
+                  <label className="text-sm font-medium text-foreground mb-1.5 block"><Icon name="BookOpen" size={13} className="inline mr-1" />Основной контент <span className="text-xs font-normal text-muted-foreground">(только тренер)</span></label>
+                  <textarea value={lessonContent} onChange={e => setLessonContent(e.target.value)} placeholder="Конспект занятия, методические заметки..."
+                    rows={3} className="w-full px-3 py-2.5 rounded-xl text-foreground text-sm outline-none resize-none"
                     style={{ background: "#F8F9FB", border: "1.5px solid #E0E5EF" }} />
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-foreground mb-1.5 block"><Icon name="List" size={13} className="inline mr-1" />Опорный конспект <span className="text-xs font-normal text-muted-foreground">(видит ученик)</span></label>
+                  <textarea value={lessonSummary} onChange={e => setLessonSummary(e.target.value)} placeholder="Ключевые тезисы для ученика..."
+                    rows={3} className="w-full px-3 py-2.5 rounded-xl text-foreground text-sm outline-none resize-none"
+                    style={{ background: "#EEF1F7", border: "1.5px solid #D0D8EA" }} />
                 </div>
                 {lessonHasHomework && (
                   <div>
