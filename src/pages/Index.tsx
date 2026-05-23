@@ -890,8 +890,29 @@ function CoursesView({ user }: { user: User }) {
 
 // ─── Homeworks View ────────────────────────────────────────────────────────────
 function HomeworksView({ user }: { user: User }) {
+  const [homeworks, setHomeworks] = useState<Homework[]>(MOCK_HOMEWORKS);
   const [selected, setSelected] = useState<Homework | null>(null);
   const [gradeInput, setGradeInput] = useState("");
+
+  const handleAccept = () => {
+    if (!selected || !gradeInput) return;
+    const updated = homeworks.map(hw =>
+      hw.id === selected.id ? { ...hw, status: "checked" as const, grade: Number(gradeInput) } : hw
+    );
+    setHomeworks(updated);
+    setSelected(null);
+    setGradeInput("");
+  };
+
+  const handleRevision = () => {
+    if (!selected) return;
+    const updated = homeworks.map(hw =>
+      hw.id === selected.id ? { ...hw, status: "revision" as const } : hw
+    );
+    setHomeworks(updated);
+    setSelected(null);
+    setGradeInput("");
+  };
 
   if (selected && user.role === "trainer") {
     return (
@@ -926,10 +947,14 @@ function HomeworksView({ user }: { user: User }) {
             ))}
           </div>
           <div className="flex gap-3">
-            <button className="flex-1 py-3 rounded-xl font-medium text-white" style={{ background: "#F4720B" }}>
-              Принять {gradeInput ? `(оценка ${gradeInput})` : ""}
+            <button onClick={handleAccept} disabled={!gradeInput}
+              className="flex-1 py-3 rounded-xl font-medium text-white transition-all disabled:opacity-40"
+              style={{ background: "#F4720B" }}>
+              {gradeInput ? `Принять (оценка ${gradeInput})` : "Выберите оценку"}
             </button>
-            <button className="px-4 py-3 rounded-xl font-medium" style={{ background: "#FEF2F2", color: "#DC2626" }}>
+            <button onClick={handleRevision}
+              className="px-4 py-3 rounded-xl font-medium transition-all hover:opacity-80"
+              style={{ background: "#FEF2F2", color: "#DC2626" }}>
               На доработку
             </button>
           </div>
@@ -974,11 +999,11 @@ function HomeworksView({ user }: { user: User }) {
     <div className="animate-fade-in space-y-6">
       <div>
         <h1 className="text-2xl font-bold">Проверка заданий</h1>
-        <p className="text-muted-foreground mt-1">{MOCK_HOMEWORKS.filter(h => h.status === "pending").length} работы ожидают проверки</p>
+        <p className="text-muted-foreground mt-1">{homeworks.filter(h => h.status === "pending").length} работы ожидают проверки</p>
       </div>
       <div className="space-y-3">
-        {MOCK_HOMEWORKS.map(hw => (
-          <div key={hw.id} className="bg-white rounded-2xl p-5 border border-border/50 hover-lift cursor-pointer" onClick={() => setSelected(hw)}>
+        {homeworks.map(hw => (
+          <div key={hw.id} className="bg-white rounded-2xl p-5 border border-border/50 hover-lift cursor-pointer" onClick={() => { setSelected(hw); setGradeInput(hw.grade ? String(hw.grade) : ""); }}>
             <div className="flex items-center gap-3 mb-2">
               <div className="w-9 h-9 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0" style={{ background: "#1B2A4A" }}>
                 {hw.studentName.split(" ").map((n: string) => n[0]).join("")}
