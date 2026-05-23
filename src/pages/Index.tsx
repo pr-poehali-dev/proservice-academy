@@ -828,19 +828,20 @@ function PresentationMode({ onExit }: { onExit: () => void }) {
   const current = SLIDE_DATA[slide];
 
   return (
-    <div className="fixed inset-0 flex flex-col no-copy" style={{ background: "#1B2A4A" }} onContextMenu={e => e.preventDefault()}>
+    <div className="fixed inset-0 flex flex-col no-copy" style={{ background: "#1B2A4A", zIndex: 9999 }} onContextMenu={e => e.preventDefault()}>
       <div className="flex items-center justify-between px-8 pt-6">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: "#F4720B" }}>
+          <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" style={{ background: "#F4720B" }}>
             <Icon name="Settings" size={18} className="text-white" />
           </div>
           <span className="text-white/70 text-sm font-medium">{current.subtitle}</span>
         </div>
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-3">
           <span className="text-white/40 text-sm">{slide + 1} / {SLIDE_DATA.length}</span>
-          <button onClick={onExit} className="flex items-center gap-2 px-3 py-2 rounded-lg text-white/60 hover:text-white text-sm transition-colors">
+          <button onClick={onExit} className="flex items-center gap-2 px-4 py-2.5 rounded-xl font-semibold text-white text-sm transition-all hover:opacity-80"
+            style={{ background: "rgba(255,255,255,0.15)", border: "1px solid rgba(255,255,255,0.25)" }}>
             <Icon name="X" size={16} />
-            Выход
+            Выйти из презентации
           </button>
         </div>
       </div>
