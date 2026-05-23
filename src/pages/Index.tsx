@@ -483,6 +483,26 @@ function StudentDashboard({ user }: { user: User }) {
 // ─── Courses View ─────────────────────────────────────────────────────────────
 function CoursesView({ user }: { user: User }) {
   const [selectedCourse, setSelectedCourse] = useState<Course | null>(null);
+  const [showCreate, setShowCreate] = useState(false);
+  const [courses, setCourses] = useState<Course[]>(MOCK_COURSES);
+  const [newTitle, setNewTitle] = useState("");
+  const [newDesc, setNewDesc] = useState("");
+
+  const handleCreateCourse = () => {
+    if (!newTitle.trim()) return;
+    const created: Course = {
+      id: courses.length + 10,
+      title: newTitle,
+      description: newDesc,
+      progress: 0,
+      studentsCount: 0,
+      lessons: [],
+    };
+    setCourses(prev => [...prev, created]);
+    setNewTitle("");
+    setNewDesc("");
+    setShowCreate(false);
+  };
 
   if (selectedCourse) {
     return (
@@ -554,16 +574,63 @@ function CoursesView({ user }: { user: User }) {
           <p className="text-muted-foreground mt-1">Все учебные программы платформы</p>
         </div>
         {user.role === "trainer" && (
-          <button className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-white font-medium text-sm" style={{ background: "#F4720B" }}>
+          <button onClick={() => setShowCreate(true)} className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-white font-medium text-sm" style={{ background: "#F4720B" }}>
             <Icon name="Plus" size={16} />
             Создать курс
           </button>
         )}
       </div>
 
+      {showCreate && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.5)", backdropFilter: "blur(4px)" }}>
+          <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl animate-scale-in">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-lg font-bold text-foreground">Новый курс</h3>
+              <button onClick={() => setShowCreate(false)} className="w-8 h-8 rounded-lg flex items-center justify-center text-muted-foreground hover:bg-muted transition-colors">
+                <Icon name="X" size={16} />
+              </button>
+            </div>
+            <div className="space-y-4">
+              <div>
+                <label className="text-sm font-medium text-foreground mb-1.5 block">Название курса</label>
+                <input
+                  value={newTitle}
+                  onChange={e => setNewTitle(e.target.value)}
+                  placeholder="Например: Мастер-приёмщик: базовый курс"
+                  className="w-full px-4 py-3 rounded-xl text-foreground text-[15px] outline-none transition-all"
+                  style={{ background: "#F8F9FB", border: "1.5px solid #E0E5EF" }}
+                  autoFocus
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium text-foreground mb-1.5 block">Описание</label>
+                <textarea
+                  value={newDesc}
+                  onChange={e => setNewDesc(e.target.value)}
+                  placeholder="Краткое описание программы курса..."
+                  rows={3}
+                  className="w-full px-4 py-3 rounded-xl text-foreground text-[15px] outline-none resize-none transition-all"
+                  style={{ background: "#F8F9FB", border: "1.5px solid #E0E5EF" }}
+                />
+              </div>
+              <div className="flex gap-3 pt-2">
+                <button onClick={() => setShowCreate(false)} className="flex-1 py-3 rounded-xl font-medium text-foreground" style={{ background: "#F0F3F8" }}>
+                  Отмена
+                </button>
+                <button onClick={handleCreateCourse} disabled={!newTitle.trim()}
+                  className="flex-1 py-3 rounded-xl font-medium text-white transition-all disabled:opacity-40"
+                  style={{ background: "#F4720B" }}>
+                  Создать
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="grid lg:grid-cols-2 gap-4">
-        {MOCK_COURSES.map(course => (
-          <div key={course.id} className="bg-white rounded-2xl p-6 border border-border/50 hover-lift cursor-pointer" onClick={() => setSelectedCourse(course)}>
+        {courses.map(course => (
+          <div key={course.id} className="bg-white rounded-2xl p-6 border border-border/50 hover-lift cursor-pointer" onClick={() => setSelectedCourse(course as Course)}>
             <div className="flex items-start justify-between mb-3">
               <div className="w-12 h-12 rounded-xl flex items-center justify-center" style={{ background: "#FFF3E8" }}>
                 <Icon name="BookOpen" size={22} style={{ color: "#F4720B" }} />
