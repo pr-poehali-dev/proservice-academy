@@ -62,6 +62,16 @@ interface ForumTopic {
   pinned?: boolean;
 }
 
+interface StudentDoc {
+  id: number;
+  name: string;
+  label: string;
+  uploadedAt: string;
+  size: string;
+  type: string;
+  dataUrl: string;
+}
+
 interface Notification {
   id: number;
   studentEmail: string;
@@ -1111,30 +1121,82 @@ function StudentsView() {
   const [showAdd, setShowAdd] = useState(false);
   const [newName, setNewName] = useState("");
   const [newEmail, setNewEmail] = useState("");
+  const [confirmDelete, setConfirmDelete] = useState<number | null>(null);
+  const [docs, setDocs] = useState<Record<number, StudentDoc[]>>({});
+  const [expandedDocs, setExpandedDocs] = useState<number | null>(null);
+  const [uploadModal, setUploadModal] = useState<number | null>(null);
+  const [docLabel, setDocLabel] = useState("");
+  const [pendingFile, setPendingFile] = useState<{ name: string; size: string; type: string; dataUrl: string } | null>(null);
+  const [confirmDeleteDoc, setConfirmDeleteDoc] = useState<{ studentId: number; docId: number } | null>(null);
+
+  const ALLOWED = ["application/pdf", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "image/jpeg", "image/png"];
+
+  const getFileIcon = (type: string) => {
+    if (type === "application/pdf") return "FileText";
+    if (type.startsWith("image/")) return "Image";
+    return "File";
+  };
+
+  const getFileColor = (type: string) => {
+    if (type === "application/pdf") return "#DC2626";
+    if (type.startsWith("image/")) return "#059669";
+    return "#3B82F6";
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!ALLOWED.includes(file.type)) { alert("Формат не поддерживается. Используйте PDF, Word, JPG или PNG."); return; }
+    const reader = new FileReader();
+    reader.onload = () => {
+      setPendingFile({
+        name: file.name,
+        size: file.size > 1024 * 1024 ? `${(file.size / 1024 / 1024).toFixed(1)} МБ` : `${Math.round(file.size / 1024)} КБ`,
+        type: file.type,
+        dataUrl: reader.result as string,
+      });
+    };
+    reader.readAsDataURL(file);
+    e.target.value = "";
+  };
+
+  const handleUploadDoc = () => {
+    if (!pendingFile || uploadModal === null) return;
+    const now = new Date();
+    const date = `${now.getDate()} ${["янв","фев","мар","апр","май","июн","июл","авг","сен","окт","ноя","дек"][now.getMonth()]}, ${now.getHours()}:${String(now.getMinutes()).padStart(2,"0")}`;
+    const doc: StudentDoc = { id: Date.now(), name: pendingFile.name, label: docLabel.trim() || pendingFile.name, uploadedAt: date, size: pendingFile.size, type: pendingFile.type, dataUrl: pendingFile.dataUrl };
+    setDocs(prev => ({ ...prev, [uploadModal]: [...(prev[uploadModal] || []), doc] }));
+    setPendingFile(null); setDocLabel(""); setUploadModal(null);
+  };
+
+  const handleDownload = (doc: StudentDoc) => {
+    const a = document.createElement("a");
+    a.href = doc.dataUrl; a.download = doc.name; a.click();
+  };
 
   const handleAddStudent = () => {
     if (!newName.trim() || !newEmail.trim()) return;
-    const student: User = {
-      id: Date.now(),
-      name: newName,
-      email: newEmail,
-      role: "student",
-      avatar: newName.split(" ").map(n => n[0]).join("").slice(0, 2).toUpperCase(),
-      progress: 0,
-      coursesCompleted: 0,
-    };
+    const student: User = { id: Date.now(), name: newName, email: newEmail, role: "student", avatar: newName.split(" ").map(n => n[0]).join("").slice(0, 2).toUpperCase(), progress: 0, coursesCompleted: 0 };
     setStudents(prev => [...prev, student]);
-    setNewName("");
-    setNewEmail("");
-    setShowAdd(false);
-  };
-
-  const handleDeleteStudent = (id: number) => {
-    setStudents(prev => prev.filter(s => s.id !== id));
+    setNewName(""); setNewEmail(""); setShowAdd(false);
   };
 
   return (
     <div className="animate-fade-in space-y-6">
+      {confirmDelete !== null && (
+        <ConfirmDialog message="Аккаунт ученика и все его данные будут удалены."
+          onConfirm={() => { setStudents(prev => prev.filter(s => s.id !== confirmDelete)); setConfirmDelete(null); }}
+          onCancel={() => setConfirmDelete(null)} />
+      )}
+      {confirmDeleteDoc && (
+        <ConfirmDialog message="Документ будет удалён безвозвратно."
+          onConfirm={() => {
+            setDocs(prev => ({ ...prev, [confirmDeleteDoc.studentId]: (prev[confirmDeleteDoc.studentId] || []).filter(d => d.id !== confirmDeleteDoc.docId) }));
+            setConfirmDeleteDoc(null);
+          }}
+          onCancel={() => setConfirmDeleteDoc(null)} />
+      )}
+
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">Ученики</h1>
@@ -1158,15 +1220,13 @@ function StudentsView() {
             <div className="space-y-4">
               <div>
                 <label className="text-sm font-medium text-foreground mb-1.5 block">Имя и фамилия</label>
-                <input value={newName} onChange={e => setNewName(e.target.value)}
-                  placeholder="Иван Мастеров"
+                <input value={newName} onChange={e => setNewName(e.target.value)} placeholder="Иван Мастеров"
                   className="w-full px-4 py-3 rounded-xl text-foreground text-[15px] outline-none"
                   style={{ background: "#F8F9FB", border: "1.5px solid #E0E5EF" }} autoFocus />
               </div>
               <div>
                 <label className="text-sm font-medium text-foreground mb-1.5 block">Email</label>
-                <input value={newEmail} onChange={e => setNewEmail(e.target.value)}
-                  placeholder="ivan@proservice.ru" type="email"
+                <input value={newEmail} onChange={e => setNewEmail(e.target.value)} placeholder="ivan@proservice.ru" type="email"
                   className="w-full px-4 py-3 rounded-xl text-foreground text-[15px] outline-none"
                   style={{ background: "#F8F9FB", border: "1.5px solid #E0E5EF" }} />
               </div>
@@ -1174,48 +1234,179 @@ function StudentsView() {
                 Пароль по умолчанию: <span className="font-mono font-semibold text-foreground">123456</span>
               </div>
               <div className="flex gap-3 pt-2">
-                <button onClick={() => setShowAdd(false)} className="flex-1 py-3 rounded-xl font-medium text-foreground" style={{ background: "#F0F3F8" }}>
-                  Отмена
-                </button>
+                <button onClick={() => setShowAdd(false)} className="flex-1 py-3 rounded-xl font-medium text-foreground" style={{ background: "#F0F3F8" }}>Отмена</button>
                 <button onClick={handleAddStudent} disabled={!newName.trim() || !newEmail.trim()}
-                  className="flex-1 py-3 rounded-xl font-medium text-white disabled:opacity-40"
-                  style={{ background: "#F4720B" }}>
-                  Добавить
-                </button>
+                  className="flex-1 py-3 rounded-xl font-medium text-white disabled:opacity-40" style={{ background: "#F4720B" }}>Добавить</button>
               </div>
             </div>
           </div>
         </div>
       )}
 
-      <div className="space-y-3">
-        {students.map(student => (
-          <div key={student.id} className="bg-white rounded-2xl p-5 border border-border/50">
-            <div className="flex items-center gap-4 mb-3">
-              <div className="w-12 h-12 rounded-2xl flex items-center justify-center text-white font-bold shrink-0" style={{ background: "#1B2A4A" }}>
-                {student.avatar}
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="font-bold text-foreground">{student.name}</div>
-                <div className="text-sm text-muted-foreground truncate">{student.email}</div>
-              </div>
-              <div className="text-right shrink-0">
-                <div className="font-bold text-lg" style={{ color: "#F4720B" }}>{student.progress}%</div>
-                <div className="text-xs text-muted-foreground">{student.coursesCompleted} курса</div>
-              </div>
-              <button onClick={() => handleDeleteStudent(student.id)}
-                className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-all"
-                style={{ color: "#DC2626" }}
-                onMouseEnter={e => (e.currentTarget.style.background = "#FEF2F2")}
-                onMouseLeave={e => (e.currentTarget.style.background = "transparent")}>
-                <Icon name="Trash2" size={14} />
+      {/* Модалка загрузки документа */}
+      {uploadModal !== null && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.5)", backdropFilter: "blur(4px)" }}>
+          <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl animate-scale-in">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-lg font-bold text-foreground">Прикрепить документ</h3>
+              <button onClick={() => { setUploadModal(null); setPendingFile(null); setDocLabel(""); }}
+                className="w-8 h-8 rounded-lg flex items-center justify-center text-muted-foreground hover:bg-muted transition-colors">
+                <Icon name="X" size={16} />
               </button>
             </div>
-            <div className="progress-bar">
-              <div className="progress-fill" style={{ width: `${student.progress}%` }} />
+            <div className="space-y-4">
+              {!pendingFile ? (
+                <label className="flex flex-col items-center justify-center gap-3 p-8 rounded-2xl border-2 border-dashed cursor-pointer transition-all hover:border-orange-300"
+                  style={{ borderColor: "#E0E5EF", background: "#F8F9FB" }}>
+                  <div className="w-12 h-12 rounded-2xl flex items-center justify-center" style={{ background: "#FFF3E8" }}>
+                    <Icon name="Upload" size={22} style={{ color: "#F4720B" }} />
+                  </div>
+                  <div className="text-center">
+                    <div className="font-medium text-foreground">Выберите файл</div>
+                    <div className="text-xs text-muted-foreground mt-1">PDF, Word, JPG, PNG</div>
+                  </div>
+                  <input type="file" className="hidden" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png" onChange={handleFileChange} />
+                </label>
+              ) : (
+                <div className="flex items-center gap-3 p-4 rounded-xl" style={{ background: "#F8F9FB", border: "1.5px solid #E0E5EF" }}>
+                  <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" style={{ background: "#EEF1F7" }}>
+                    <Icon name={getFileIcon(pendingFile.type)} size={18} style={{ color: getFileColor(pendingFile.type) }} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium text-foreground truncate">{pendingFile.name}</div>
+                    <div className="text-xs text-muted-foreground">{pendingFile.size}</div>
+                  </div>
+                  <button onClick={() => setPendingFile(null)} className="w-7 h-7 rounded-lg flex items-center justify-center text-muted-foreground hover:bg-muted">
+                    <Icon name="X" size={14} />
+                  </button>
+                </div>
+              )}
+              <div>
+                <label className="text-sm font-medium text-foreground mb-1.5 block">Подпись к документу</label>
+                <input value={docLabel} onChange={e => setDocLabel(e.target.value)}
+                  placeholder="Например: Резюме с HH.ru"
+                  className="w-full px-4 py-3 rounded-xl text-foreground text-[15px] outline-none"
+                  style={{ background: "#F8F9FB", border: "1.5px solid #E0E5EF" }} />
+              </div>
+              <div className="flex gap-3 pt-2">
+                <button onClick={() => { setUploadModal(null); setPendingFile(null); setDocLabel(""); }}
+                  className="flex-1 py-3 rounded-xl font-medium text-foreground" style={{ background: "#F0F3F8" }}>Отмена</button>
+                <button onClick={handleUploadDoc} disabled={!pendingFile}
+                  className="flex-1 py-3 rounded-xl font-medium text-white disabled:opacity-40" style={{ background: "#F4720B" }}>Прикрепить</button>
+              </div>
             </div>
           </div>
-        ))}
+        </div>
+      )}
+
+      <div className="space-y-4">
+        {students.map(student => {
+          const studentDocs = docs[student.id] || [];
+          const isExpanded = expandedDocs === student.id;
+          return (
+            <div key={student.id} className="bg-white rounded-2xl border border-border/50 overflow-hidden">
+              {/* Шапка карточки */}
+              <div className="p-5">
+                <div className="flex items-center gap-4 mb-3">
+                  <div className="w-12 h-12 rounded-2xl flex items-center justify-center text-white font-bold shrink-0" style={{ background: "#1B2A4A" }}>
+                    {student.avatar}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-bold text-foreground">{student.name}</div>
+                    <div className="text-sm text-muted-foreground truncate">{student.email}</div>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <div className="font-bold text-lg" style={{ color: "#F4720B" }}>{student.progress}%</div>
+                    <div className="text-xs text-muted-foreground">{student.coursesCompleted} курса</div>
+                  </div>
+                  <button onClick={() => setConfirmDelete(student.id)}
+                    className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-all"
+                    style={{ color: "#DC2626" }}
+                    onMouseEnter={e => (e.currentTarget.style.background = "#FEF2F2")}
+                    onMouseLeave={e => (e.currentTarget.style.background = "transparent")}>
+                    <Icon name="Trash2" size={14} />
+                  </button>
+                </div>
+                <div className="progress-bar mb-4">
+                  <div className="progress-fill" style={{ width: `${student.progress}%` }} />
+                </div>
+
+                {/* Кнопки документов */}
+                <div className="flex items-center gap-2 pt-1 border-t border-border/50">
+                  <button onClick={() => setUploadModal(student.id)}
+                    className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-all"
+                    style={{ background: "#FFF3E8", color: "#F4720B" }}>
+                    <Icon name="Paperclip" size={14} />
+                    Прикрепить документ
+                  </button>
+                  {studentDocs.length > 0 && (
+                    <button onClick={() => setExpandedDocs(isExpanded ? null : student.id)}
+                      className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-all text-muted-foreground hover:text-foreground hover:bg-muted">
+                      <Icon name="FolderOpen" size={14} />
+                      {studentDocs.length} {studentDocs.length === 1 ? "документ" : studentDocs.length < 5 ? "документа" : "документов"}
+                      <Icon name={isExpanded ? "ChevronUp" : "ChevronDown"} size={14} />
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Список документов */}
+              {isExpanded && studentDocs.length > 0 && (
+                <div className="border-t border-border/50 px-5 py-3 space-y-2" style={{ background: "#F8F9FB" }}>
+                  {studentDocs.map(doc => (
+                    <div key={doc.id} className="flex items-center gap-3 p-3 rounded-xl bg-white border border-border/50">
+                      <div className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0" style={{ background: "#EEF1F7" }}>
+                        <Icon name={getFileIcon(doc.type)} size={16} style={{ color: getFileColor(doc.type) }} />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-semibold text-foreground truncate">{doc.label}</div>
+                        <div className="text-xs text-muted-foreground">{doc.name} · {doc.size} · {doc.uploadedAt}</div>
+                      </div>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button onClick={() => handleDownload(doc)}
+                          className="w-8 h-8 rounded-lg flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted transition-all"
+                          title="Скачать">
+                          <Icon name="Download" size={14} />
+                        </button>
+                        <button onClick={() => setConfirmDeleteDoc({ studentId: student.id, docId: doc.id })}
+                          className="w-8 h-8 rounded-lg flex items-center justify-center transition-all"
+                          style={{ color: "#DC2626" }}
+                          onMouseEnter={e => (e.currentTarget.style.background = "#FEF2F2")}
+                          onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
+                          title="Удалить">
+                          <Icon name="Trash2" size={14} />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ─── Confirm Dialog ───────────────────────────────────────────────────────────
+function ConfirmDialog({ message, onConfirm, onCancel }: { message: string; onConfirm: () => void; onCancel: () => void }) {
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.5)", backdropFilter: "blur(4px)" }}>
+      <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl animate-scale-in">
+        <div className="w-12 h-12 rounded-2xl flex items-center justify-center mx-auto mb-4" style={{ background: "#FEF2F2" }}>
+          <Icon name="AlertTriangle" size={22} style={{ color: "#DC2626" }} />
+        </div>
+        <p className="text-center font-semibold text-foreground mb-1">Подтвердите действие</p>
+        <p className="text-center text-sm text-muted-foreground mb-6">{message}</p>
+        <div className="flex gap-3">
+          <button onClick={onCancel} className="flex-1 py-3 rounded-xl font-medium text-foreground" style={{ background: "#F0F3F8" }}>
+            Отмена
+          </button>
+          <button onClick={onConfirm} className="flex-1 py-3 rounded-xl font-medium text-white" style={{ background: "#DC2626" }}>
+            Удалить
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -1230,6 +1421,7 @@ function ForumView({ user }: { user: User }) {
   const [newTopicTitle, setNewTopicTitle] = useState("");
   const [newTopicText, setNewTopicText] = useState("");
   const [likedPosts, setLikedPosts] = useState<number[]>([]);
+  const [confirm, setConfirm] = useState<{ message: string; onConfirm: () => void } | null>(null);
 
   const authorRole = user.role === "trainer" ? "Тренер" : "Ученик";
 
@@ -1264,16 +1456,28 @@ function ForumView({ user }: { user: User }) {
   };
 
   const handleDeleteTopic = (topicId: number) => {
-    setTopics(prev => prev.filter(t => t.id !== topicId));
-    setSelectedTopic(null);
+    setConfirm({
+      message: "Тема и все сообщения в ней будут удалены безвозвратно.",
+      onConfirm: () => {
+        setTopics(prev => prev.filter(t => t.id !== topicId));
+        setSelectedTopic(null);
+        setConfirm(null);
+      },
+    });
   };
 
   const handleDeletePost = (postId: number) => {
-    if (!selectedTopic) return;
-    const updatedPosts = selectedTopic.posts.filter(p => p.id !== postId);
-    const updated = { ...selectedTopic, posts: updatedPosts };
-    setTopics(prev => prev.map(t => t.id === selectedTopic.id ? updated : t));
-    setSelectedTopic(updated);
+    setConfirm({
+      message: "Сообщение будет удалено безвозвратно.",
+      onConfirm: () => {
+        if (!selectedTopic) return;
+        const updatedPosts = selectedTopic.posts.filter(p => p.id !== postId);
+        const updated = { ...selectedTopic, posts: updatedPosts };
+        setTopics(prev => prev.map(t => t.id === selectedTopic.id ? updated : t));
+        setSelectedTopic(updated);
+        setConfirm(null);
+      },
+    });
   };
 
   const handleTogglePin = (topicId: number) => {
@@ -1299,6 +1503,7 @@ function ForumView({ user }: { user: User }) {
   if (selectedTopic) {
     return (
       <div className="animate-fade-in space-y-4">
+        {confirm && <ConfirmDialog message={confirm.message} onConfirm={confirm.onConfirm} onCancel={() => setConfirm(null)} />}
         <button onClick={() => setSelectedTopic(null)} className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors text-sm font-medium">
           <Icon name="ArrowLeft" size={16} />
           Все темы
@@ -1389,6 +1594,7 @@ function ForumView({ user }: { user: User }) {
   // ── Список тем ──
   return (
     <div className="animate-fade-in space-y-4">
+      {confirm && <ConfirmDialog message={confirm.message} onConfirm={confirm.onConfirm} onCancel={() => setConfirm(null)} />}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">Форум</h1>
