@@ -1,10 +1,20 @@
 {
   "tests": [
     {
-      "name": "Health check",
-      "method": "GET",
+      "name": "Login trainer",
+      "method": "POST",
       "path": "/",
-      "expectedStatus": 404,
+      "body": {"_method": "POST", "_path": "/auth/login", "email": "trainer@proservice.ru", "password": "123456"},
+      "expectedStatus": 200,
+      "expectedBody": {"role": "trainer"},
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "Get courses",
+      "method": "POST",
+      "path": "/",
+      "body": {"_method": "GET", "_path": "/courses"},
+      "expectedStatus": 200,
       "bodyMatcher": "partial"
     }
   ]

@@ -26,15 +26,26 @@ def handler(event: dict, context) -> dict:
     if event.get('httpMethod') == 'OPTIONS':
         return {'statusCode': 200, 'headers': CORS, 'body': ''}
 
-    method = event.get('httpMethod', 'GET')
-    path = event.get('path', '/')
-    qs = event.get('queryStringParameters') or {}
+    # Читаем тело — метод и путь передаются в нём
     body = {}
     if event.get('body'):
         try:
             body = json.loads(event['body'])
         except Exception:
             pass
+
+    # _method и _path — виртуальная маршрутизация через тело запроса
+    method = body.pop('_method', event.get('httpMethod', 'GET')).upper()
+    raw_path = body.pop('_path', event.get('path', '/'))
+
+    # Разбираем путь и query string
+    if '?' in raw_path:
+        path_part, qs_part = raw_path.split('?', 1)
+        path = path_part
+        qs = dict(p.split('=', 1) for p in qs_part.split('&') if '=' in p)
+    else:
+        path = raw_path
+        qs = event.get('queryStringParameters') or {}
 
     # ── AUTH ──────────────────────────────────────────────────────────────────
     if path == '/auth/login' and method == 'POST':
