@@ -488,9 +488,38 @@ function CoursesView({ user }: { user: User }) {
   const [newTitle, setNewTitle] = useState("");
   const [newDesc, setNewDesc] = useState("");
   const [showAddLesson, setShowAddLesson] = useState(false);
+  const [editingLesson, setEditingLesson] = useState<Lesson | null>(null);
   const [lessonTitle, setLessonTitle] = useState("");
   const [lessonDuration, setLessonDuration] = useState("");
   const [lessonHasHomework, setLessonHasHomework] = useState(false);
+
+  const openEditLesson = (lesson: Lesson) => {
+    setEditingLesson(lesson);
+    setLessonTitle(lesson.title);
+    setLessonDuration(lesson.duration);
+    setLessonHasHomework(lesson.hasHomework);
+  };
+
+  const handleEditLesson = () => {
+    if (!lessonTitle.trim() || !selectedCourse || !editingLesson) return;
+    const updated = {
+      ...selectedCourse,
+      lessons: selectedCourse.lessons.map(l =>
+        l.id === editingLesson.id ? { ...l, title: lessonTitle, duration: lessonDuration || "30 мин", hasHomework: lessonHasHomework } : l
+      ),
+    };
+    setCourses(prev => prev.map(c => c.id === selectedCourse.id ? updated : c));
+    setSelectedCourse(updated);
+    setEditingLesson(null);
+    setLessonTitle(""); setLessonDuration(""); setLessonHasHomework(false);
+  };
+
+  const handleDeleteLesson = (lessonId: number) => {
+    if (!selectedCourse) return;
+    const updated = { ...selectedCourse, lessons: selectedCourse.lessons.filter(l => l.id !== lessonId) };
+    setCourses(prev => prev.map(c => c.id === selectedCourse.id ? updated : c));
+    setSelectedCourse(updated);
+  };
 
   const handleCreateCourse = () => {
     if (!newTitle.trim()) return;
@@ -556,27 +585,85 @@ function CoursesView({ user }: { user: User }) {
 
         <div className="space-y-3">
           {selectedCourse.lessons.map((lesson, idx) => (
-            <div key={lesson.id} className="bg-white rounded-2xl p-5 border border-border/50 hover-lift cursor-pointer flex items-center gap-4">
+            <div key={lesson.id} className="bg-white rounded-2xl p-5 border border-border/50 flex items-center gap-4">
               <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 font-bold text-sm"
                 style={{ background: lesson.completed ? "#F4720B" : "#F0F2F5", color: lesson.completed ? "white" : "#9CA3AF" }}>
                 {lesson.completed ? <Icon name="Check" size={16} className="text-white" /> : idx + 1}
               </div>
-              <div className="flex-1">
+              <div className="flex-1 min-w-0">
                 <div className="font-semibold text-foreground">{lesson.title}</div>
                 <div className="text-sm text-muted-foreground flex items-center gap-3 mt-0.5">
                   <span className="flex items-center gap-1"><Icon name="Clock" size={12} />{lesson.duration}</span>
                   {lesson.hasHomework && <span className="flex items-center gap-1"><Icon name="FileText" size={12} />Д/З</span>}
                 </div>
               </div>
-              {lesson.completed
-                ? <span className="text-xs px-2 py-1 rounded-full font-medium" style={{ background: "#ECFDF5", color: "#059669" }}>Пройден</span>
-                : user.role === "student" && (
-                  <button className="text-xs px-3 py-1.5 rounded-lg font-medium text-white" style={{ background: "#F4720B" }}>Начать</button>
-                )
+              {user.role === "trainer" ? (
+                <div className="flex items-center gap-1 shrink-0">
+                  <button onClick={() => openEditLesson(lesson)}
+                    className="w-8 h-8 rounded-lg flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted transition-all">
+                    <Icon name="Pencil" size={14} />
+                  </button>
+                  <button onClick={() => handleDeleteLesson(lesson.id)}
+                    className="w-8 h-8 rounded-lg flex items-center justify-center transition-all"
+                    style={{ color: "#DC2626" }}
+                    onMouseEnter={e => (e.currentTarget.style.background = "#FEF2F2")}
+                    onMouseLeave={e => (e.currentTarget.style.background = "transparent")}>
+                    <Icon name="Trash2" size={14} />
+                  </button>
+                </div>
+              ) : lesson.completed
+                ? <span className="text-xs px-2 py-1 rounded-full font-medium shrink-0" style={{ background: "#ECFDF5", color: "#059669" }}>Пройден</span>
+                : <button className="text-xs px-3 py-1.5 rounded-lg font-medium text-white shrink-0" style={{ background: "#F4720B" }}>Начать</button>
               }
             </div>
           ))}
         </div>
+
+        {editingLesson && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.5)", backdropFilter: "blur(4px)" }}>
+            <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl animate-scale-in">
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-lg font-bold text-foreground">Редактировать урок</h3>
+                <button onClick={() => setEditingLesson(null)} className="w-8 h-8 rounded-lg flex items-center justify-center text-muted-foreground hover:bg-muted transition-colors">
+                  <Icon name="X" size={16} />
+                </button>
+              </div>
+              <div className="space-y-4">
+                <div>
+                  <label className="text-sm font-medium text-foreground mb-1.5 block">Название урока</label>
+                  <input value={lessonTitle} onChange={e => setLessonTitle(e.target.value)}
+                    className="w-full px-4 py-3 rounded-xl text-foreground text-[15px] outline-none"
+                    style={{ background: "#F8F9FB", border: "1.5px solid #E0E5EF" }} autoFocus />
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-foreground mb-1.5 block">Продолжительность</label>
+                  <input value={lessonDuration} onChange={e => setLessonDuration(e.target.value)}
+                    placeholder="Например: 45 мин"
+                    className="w-full px-4 py-3 rounded-xl text-foreground text-[15px] outline-none"
+                    style={{ background: "#F8F9FB", border: "1.5px solid #E0E5EF" }} />
+                </div>
+                <label className="flex items-center gap-3 cursor-pointer p-3 rounded-xl hover:bg-muted/50 transition-colors">
+                  <div onClick={() => setLessonHasHomework(v => !v)}
+                    className="w-5 h-5 rounded flex items-center justify-center transition-all shrink-0"
+                    style={{ background: lessonHasHomework ? "#F4720B" : "#E0E5EF" }}>
+                    {lessonHasHomework && <Icon name="Check" size={12} className="text-white" />}
+                  </div>
+                  <span className="text-sm font-medium text-foreground">Есть домашнее задание</span>
+                </label>
+                <div className="flex gap-3 pt-2">
+                  <button onClick={() => setEditingLesson(null)} className="flex-1 py-3 rounded-xl font-medium text-foreground" style={{ background: "#F0F3F8" }}>
+                    Отмена
+                  </button>
+                  <button onClick={handleEditLesson} disabled={!lessonTitle.trim()}
+                    className="flex-1 py-3 rounded-xl font-medium text-white disabled:opacity-40"
+                    style={{ background: "#F4720B" }}>
+                    Сохранить
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {user.role === "trainer" && (
           <button onClick={() => setShowAddLesson(true)} className="flex items-center gap-2 w-full justify-center py-4 rounded-2xl border-2 border-dashed font-medium text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-all" style={{ borderColor: "#E0E5EF" }}>
