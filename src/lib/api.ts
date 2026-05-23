@@ -102,3 +102,11 @@ export const apiPostMessage = (topicId: number, data: { author_id: number; text:
   post<Record<string, unknown>>(`/forum/topics/${topicId}/posts`, data);
 export const apiLikePost = (postId: number, userId: number) =>
   post<Record<string, unknown>>(`/forum/posts/${postId}/like`, { user_id: userId });
+
+// Trainer Profile
+export const apiGetProfile = (userId: number) =>
+  get<Record<string, unknown>>(`/profile/${userId}`);
+export const apiSaveProfile = (userId: number, data: Record<string, unknown>) =>
+  post<Record<string, unknown>>(`/profile/${userId}`, data);
+export const apiUploadProfilePhoto = (userId: number, dataUrl: string) =>
+  post<Record<string, unknown>>('/profile-photo', { user_id: userId, data_url: dataUrl });

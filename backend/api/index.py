@@ -60,6 +60,67 @@ def handler(event: dict, context) -> dict:
             return err('Неверный email или пароль', 401)
         return ok(dict(user))
 
+    # ── TRAINER PROFILE ───────────────────────────────────────────────────────
+    if path.startswith('/profile/') and method == 'GET':
+        uid = path.split('/')[2]
+        conn = db()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("SELECT u.name, u.email, u.avatar, p.display_name, p.about, p.phone, p.vk_url, p.photo_url FROM psa_users u LEFT JOIN psa_trainer_profile p ON p.user_id=u.id WHERE u.id=%s", (uid,))
+        row = cur.fetchone()
+        conn.close()
+        return ok(dict(row) if row else {})
+
+    if path.startswith('/profile/') and method in ('POST', 'PATCH', 'PUT'):
+        uid = path.split('/')[2]
+        conn = db()
+        cur = conn.cursor()
+        # Обновляем имя/email в psa_users если переданы
+        user_fields, user_vals = [], []
+        if 'name' in body:
+            user_fields.append('name=%s')
+            user_vals.append(body['name'])
+            # Обновляем аватар из первых букв нового имени
+            avatar = ''.join([w[0] for w in body['name'].split()][:2]).upper()
+            user_fields.append('avatar=%s')
+            user_vals.append(avatar)
+        if 'email' in body:
+            user_fields.append('email=%s')
+            user_vals.append(body['email'])
+        if 'password' in body and body['password']:
+            user_fields.append('password_hash=%s')
+            user_vals.append(body['password'])
+        if user_fields:
+            user_vals.append(uid)
+            cur.execute(f"UPDATE psa_users SET {', '.join(user_fields)} WHERE id=%s", user_vals)
+        # Upsert профиль
+        profile_fields = ['display_name', 'about', 'phone', 'vk_url', 'photo_url']
+        profile_data = {k: body[k] for k in profile_fields if k in body}
+        if profile_data:
+            keys = list(profile_data.keys())
+            vals = list(profile_data.values())
+            set_clause = ', '.join([f"{k}=%s" for k in keys])
+            cur.execute(
+                f"INSERT INTO psa_trainer_profile (user_id, {', '.join(keys)}) VALUES (%s, {', '.join(['%s']*len(keys))}) ON CONFLICT (user_id) DO UPDATE SET {set_clause}, updated_at=NOW()",
+                [uid] + vals + vals
+            )
+        conn.commit()
+        conn.close()
+        return ok({'ok': True})
+
+    # Загрузка фото профиля (base64)
+    if path == '/profile-photo' and method == 'POST':
+        uid = body.get('user_id')
+        data_url = body.get('data_url', '')
+        conn = db()
+        cur = conn.cursor()
+        cur.execute(
+            "INSERT INTO psa_trainer_profile (user_id, photo_url) VALUES (%s,%s) ON CONFLICT (user_id) DO UPDATE SET photo_url=%s, updated_at=NOW()",
+            (uid, data_url, data_url)
+        )
+        conn.commit()
+        conn.close()
+        return ok({'photo_url': data_url})
+
     # ── USERS ─────────────────────────────────────────────────────────────────
     if path == '/users' and method == 'GET':
         conn = db()

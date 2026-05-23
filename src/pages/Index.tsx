@@ -355,6 +355,7 @@ function Sidebar({ user, activeTab, setActiveTab, onLogout }: {
     { id: "homeworks", icon: "ClipboardCheck", label: "Задания" },
     { id: "forum", icon: "MessageSquare", label: "Форум" },
     { id: "presentation", icon: "Monitor", label: "Презентация" },
+    { id: "profile", icon: "UserCircle", label: "Мой профиль" },
   ];
   const studentNav = [
     { id: "dashboard", icon: "LayoutDashboard", label: "Мой кабинет" },
@@ -2666,6 +2667,227 @@ function PresentationMode({ onExit }: { onExit: () => void }) {
   );
 }
 
+// ─── Profile View ─────────────────────────────────────────────────────────────
+function ProfileView({ user, onUserUpdate }: { user: User; onUserUpdate: (u: User) => void }) {
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  const [displayName, setDisplayName] = useState("");
+  const [about, setAbout] = useState("");
+  const [phone, setPhone] = useState("");
+  const [vkUrl, setVkUrl] = useState("");
+  const [photoUrl, setPhotoUrl] = useState("");
+  const [email, setEmail] = useState(user.email);
+  const [password, setPassword] = useState("");
+  const [passwordConfirm, setPasswordConfirm] = useState("");
+  const [passwordError, setPasswordError] = useState("");
+  const [activeSection, setActiveSection] = useState<"public" | "account">("public");
+
+  useEffect(() => {
+    API.apiGetProfile(user.id).then(raw => {
+      setDisplayName((raw.display_name as string) || user.name);
+      setAbout((raw.about as string) || "");
+      setPhone((raw.phone as string) || "");
+      setVkUrl((raw.vk_url as string) || "");
+      setPhotoUrl((raw.photo_url as string) || "");
+      setEmail((raw.email as string) || user.email);
+    }).catch(() => {
+      setDisplayName(user.name);
+    }).finally(() => setLoading(false));
+  }, [user.id]);
+
+  const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = reader.result as string;
+      setPhotoUrl(dataUrl);
+      API.apiUploadProfilePhoto(user.id, dataUrl).catch(() => {});
+    };
+    reader.readAsDataURL(file);
+    e.target.value = "";
+  };
+
+  const handleSavePublic = async () => {
+    setSaving(true);
+    try {
+      await API.apiSaveProfile(user.id, { display_name: displayName, about, phone, vk_url: vkUrl });
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2500);
+    } catch (e) { console.error(e); }
+    setSaving(false);
+  };
+
+  const handleSaveAccount = async () => {
+    setPasswordError("");
+    if (password && password !== passwordConfirm) {
+      setPasswordError("Пароли не совпадают");
+      return;
+    }
+    setSaving(true);
+    try {
+      const data: Record<string, unknown> = { email };
+      if (password) data.password = password;
+      await API.apiSaveProfile(user.id, data);
+      onUserUpdate({ ...user, email });
+      setSaved(true);
+      setPassword(""); setPasswordConfirm("");
+      setTimeout(() => setSaved(false), 2500);
+    } catch (e) { console.error(e); }
+    setSaving(false);
+  };
+
+  if (loading) return (
+    <div className="flex items-center justify-center py-20 text-muted-foreground">
+      <Icon name="Loader" size={24} className="animate-spin mr-2" />Загрузка...
+    </div>
+  );
+
+  return (
+    <div className="animate-fade-in space-y-6 max-w-2xl">
+      <div>
+        <h1 className="text-2xl font-bold">Мой профиль</h1>
+        <p className="text-muted-foreground mt-1">Информация для учеников и настройки аккаунта</p>
+      </div>
+
+      {/* Вкладки */}
+      <div className="flex gap-1 p-1 rounded-xl" style={{ background: "#EEF1F7" }}>
+        {[
+          { id: "public" as const, label: "Публичный профиль", icon: "User" },
+          { id: "account" as const, label: "Аккаунт", icon: "Lock" },
+        ].map(tab => (
+          <button key={tab.id} onClick={() => setActiveSection(tab.id)}
+            className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-medium transition-all"
+            style={activeSection === tab.id ? { background: "white", color: "#1B2A4A", boxShadow: "0 1px 4px rgba(0,0,0,0.08)" } : { color: "#6B7280" }}>
+            <Icon name={tab.icon} size={15} />
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {activeSection === "public" && (
+        <div className="space-y-5">
+          {/* Фото */}
+          <div className="bg-white rounded-2xl p-6 border border-border/50">
+            <h3 className="font-bold text-foreground mb-4">Фото профиля</h3>
+            <div className="flex items-center gap-5">
+              <div className="relative shrink-0">
+                {photoUrl ? (
+                  <img src={photoUrl} alt="Фото" className="w-24 h-24 rounded-2xl object-cover" />
+                ) : (
+                  <div className="w-24 h-24 rounded-2xl flex items-center justify-center text-white text-3xl font-bold" style={{ background: "#1B2A4A" }}>
+                    {user.avatar}
+                  </div>
+                )}
+                <label className="absolute -bottom-2 -right-2 w-8 h-8 rounded-full flex items-center justify-center cursor-pointer shadow-md text-white transition-all hover:opacity-80" style={{ background: "#F4720B" }}>
+                  <Icon name="Camera" size={14} />
+                  <input type="file" accept="image/*" className="hidden" onChange={handlePhotoChange} />
+                </label>
+              </div>
+              <div>
+                <div className="font-semibold text-foreground">{displayName || user.name}</div>
+                <div className="text-sm text-muted-foreground mt-0.5">Тренер · ProService Academy</div>
+                <div className="text-xs text-muted-foreground mt-2">JPG, PNG до 5 МБ</div>
+              </div>
+            </div>
+          </div>
+
+          {/* Основная информация */}
+          <div className="bg-white rounded-2xl p-6 border border-border/50 space-y-4">
+            <h3 className="font-bold text-foreground">Информация для учеников</h3>
+            <div>
+              <label className="text-sm font-medium text-foreground mb-1.5 block">Имя и фамилия</label>
+              <input value={displayName} onChange={e => setDisplayName(e.target.value)}
+                placeholder="Александр Тренеров"
+                className="w-full px-4 py-3 rounded-xl text-foreground text-[15px] outline-none"
+                style={{ background: "#F8F9FB", border: "1.5px solid #E0E5EF" }} />
+            </div>
+            <div>
+              <label className="text-sm font-medium text-foreground mb-1.5 block">О себе</label>
+              <textarea value={about} onChange={e => setAbout(e.target.value)}
+                placeholder="Опыт работы, специализация, подход к обучению..."
+                rows={4} className="w-full px-4 py-3 rounded-xl text-foreground text-[15px] outline-none resize-none"
+                style={{ background: "#F8F9FB", border: "1.5px solid #E0E5EF" }} />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="text-sm font-medium text-foreground mb-1.5 block flex items-center gap-1.5">
+                  <Icon name="Phone" size={13} />Телефон
+                </label>
+                <input value={phone} onChange={e => setPhone(e.target.value)}
+                  placeholder="+7 900 000-00-00"
+                  className="w-full px-4 py-3 rounded-xl text-foreground text-[15px] outline-none"
+                  style={{ background: "#F8F9FB", border: "1.5px solid #E0E5EF" }} />
+              </div>
+              <div>
+                <label className="text-sm font-medium text-foreground mb-1.5 block flex items-center gap-1.5">
+                  <Icon name="Link" size={13} />ВКонтакте
+                </label>
+                <input value={vkUrl} onChange={e => setVkUrl(e.target.value)}
+                  placeholder="https://vk.com/username"
+                  className="w-full px-4 py-3 rounded-xl text-foreground text-[15px] outline-none"
+                  style={{ background: "#F8F9FB", border: "1.5px solid #E0E5EF" }} />
+              </div>
+            </div>
+            <div className="flex items-center justify-between pt-2">
+              {saved && <span className="text-sm font-medium flex items-center gap-1.5" style={{ color: "#059669" }}><Icon name="CheckCircle" size={15} />Сохранено</span>}
+              <button onClick={handleSavePublic} disabled={saving}
+                className="ml-auto flex items-center gap-2 px-6 py-3 rounded-xl font-medium text-white disabled:opacity-50 transition-all"
+                style={{ background: "#F4720B" }}>
+                {saving ? <><Icon name="Loader" size={15} className="animate-spin" />Сохранение...</> : "Сохранить"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {activeSection === "account" && (
+        <div className="space-y-5">
+          <div className="bg-white rounded-2xl p-6 border border-border/50 space-y-4">
+            <h3 className="font-bold text-foreground">Email</h3>
+            <div>
+              <label className="text-sm font-medium text-foreground mb-1.5 block">Адрес электронной почты</label>
+              <input value={email} onChange={e => setEmail(e.target.value)} type="email"
+                className="w-full px-4 py-3 rounded-xl text-foreground text-[15px] outline-none"
+                style={{ background: "#F8F9FB", border: "1.5px solid #E0E5EF" }} />
+              <p className="text-xs text-muted-foreground mt-1.5">Используется для входа в систему</p>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-2xl p-6 border border-border/50 space-y-4">
+            <h3 className="font-bold text-foreground">Смена пароля</h3>
+            <div>
+              <label className="text-sm font-medium text-foreground mb-1.5 block">Новый пароль</label>
+              <input value={password} onChange={e => setPassword(e.target.value)} type="password"
+                placeholder="Оставьте пустым, чтобы не менять"
+                className="w-full px-4 py-3 rounded-xl text-foreground text-[15px] outline-none"
+                style={{ background: "#F8F9FB", border: "1.5px solid #E0E5EF" }} />
+            </div>
+            <div>
+              <label className="text-sm font-medium text-foreground mb-1.5 block">Повторите пароль</label>
+              <input value={passwordConfirm} onChange={e => setPasswordConfirm(e.target.value)} type="password"
+                placeholder="Повторите новый пароль"
+                className="w-full px-4 py-3 rounded-xl text-foreground text-[15px] outline-none"
+                style={{ background: "#F8F9FB", border: `1.5px solid ${passwordError ? "#DC2626" : "#E0E5EF"}` }} />
+              {passwordError && <p className="text-xs mt-1" style={{ color: "#DC2626" }}>{passwordError}</p>}
+            </div>
+            <div className="flex items-center justify-between pt-2">
+              {saved && <span className="text-sm font-medium flex items-center gap-1.5" style={{ color: "#059669" }}><Icon name="CheckCircle" size={15} />Сохранено</span>}
+              <button onClick={handleSaveAccount} disabled={saving}
+                className="ml-auto flex items-center gap-2 px-6 py-3 rounded-xl font-medium text-white disabled:opacity-50 transition-all"
+                style={{ background: "#F4720B" }}>
+                {saving ? <><Icon name="Loader" size={15} className="animate-spin" />Сохранение...</> : "Сохранить"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Main App ─────────────────────────────────────────────────────────────────
 export default function Index() {
   const [user, setUser] = useLocalStorage<User | null>("psa_user", null);
@@ -2736,6 +2958,7 @@ export default function Index() {
     if (activeTab === "students") return <StudentsView />;
     if (activeTab === "forum") return <ForumView user={user} />;
     if (activeTab === "presentation") return <PresentationMode onExit={() => setActiveTab("dashboard")} />;
+    if (activeTab === "profile") return <ProfileView user={user} onUserUpdate={u => setUser(u)} />;
     return null;
   };
 
