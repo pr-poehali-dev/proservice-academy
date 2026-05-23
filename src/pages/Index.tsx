@@ -1263,6 +1263,19 @@ function ForumView({ user }: { user: User }) {
     setNewMsg("");
   };
 
+  const handleDeleteTopic = (topicId: number) => {
+    setTopics(prev => prev.filter(t => t.id !== topicId));
+    setSelectedTopic(null);
+  };
+
+  const handleDeletePost = (postId: number) => {
+    if (!selectedTopic) return;
+    const updatedPosts = selectedTopic.posts.filter(p => p.id !== postId);
+    const updated = { ...selectedTopic, posts: updatedPosts };
+    setTopics(prev => prev.map(t => t.id === selectedTopic.id ? updated : t));
+    setSelectedTopic(updated);
+  };
+
   const handleTogglePin = (topicId: number) => {
     setTopics(prev => {
       const updated = prev.map(t => t.id === topicId ? { ...t, pinned: !t.pinned } : t);
@@ -1292,13 +1305,25 @@ function ForumView({ user }: { user: User }) {
         </button>
 
         <div className="bg-white rounded-2xl p-5 border border-border/50">
-          <h1 className="text-lg font-bold text-foreground">{selectedTopic.title}</h1>
-          <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground">
-            <span>{selectedTopic.author}</span>
-            <span>·</span>
-            <span>{selectedTopic.createdAt}</span>
-            <span>·</span>
-            <span>{selectedTopic.posts.length} {selectedTopic.posts.length === 1 ? "ответ" : "ответа"}</span>
+          <div className="flex items-start gap-3 justify-between">
+            <div className="flex-1">
+              <h1 className="text-lg font-bold text-foreground">{selectedTopic.title}</h1>
+              <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground">
+                <span>{selectedTopic.author}</span>
+                <span>·</span>
+                <span>{selectedTopic.createdAt}</span>
+                <span>·</span>
+                <span>{selectedTopic.posts.length} {selectedTopic.posts.length === 1 ? "ответ" : "ответа"}</span>
+              </div>
+            </div>
+            {user.role === "trainer" && (
+              <button onClick={() => handleDeleteTopic(selectedTopic.id)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all shrink-0"
+                style={{ background: "#FEF2F2", color: "#DC2626" }}>
+                <Icon name="Trash2" size={13} />
+                Удалить тему
+              </button>
+            )}
           </div>
         </div>
 
@@ -1320,12 +1345,22 @@ function ForumView({ user }: { user: User }) {
                     <span className="text-xs text-muted-foreground ml-auto">{post.time}</span>
                   </div>
                   <p className="text-foreground leading-relaxed">{post.text}</p>
-                  <button onClick={() => handleLike(post.id)}
-                    className="flex items-center gap-1.5 mt-3 text-sm transition-colors"
-                    style={{ color: likedPosts.includes(post.id) ? "#F4720B" : "#9CA3AF" }}>
-                    <Icon name="Heart" size={14} />
-                    {post.likes}
-                  </button>
+                  <div className="flex items-center gap-3 mt-3">
+                    <button onClick={() => handleLike(post.id)}
+                      className="flex items-center gap-1.5 text-sm transition-colors"
+                      style={{ color: likedPosts.includes(post.id) ? "#F4720B" : "#9CA3AF" }}>
+                      <Icon name="Heart" size={14} />
+                      {post.likes}
+                    </button>
+                    {user.role === "trainer" && (
+                      <button onClick={() => handleDeletePost(post.id)}
+                        className="flex items-center gap-1 text-xs transition-colors ml-auto"
+                        style={{ color: "#DC2626" }}>
+                        <Icon name="Trash2" size={12} />
+                        Удалить
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
@@ -1435,13 +1470,24 @@ function ForumView({ user }: { user: User }) {
               </div>
               <div className="flex items-center gap-2 shrink-0">
                 {user.role === "trainer" && (
-                  <button
-                    onClick={e => { e.stopPropagation(); handleTogglePin(topic.id); }}
-                    className="w-8 h-8 rounded-lg flex items-center justify-center transition-all"
-                    style={{ background: topic.pinned ? "#FFF3E8" : "transparent", color: topic.pinned ? "#F4720B" : "#9CA3AF" }}
-                    title={topic.pinned ? "Открепить" : "Закрепить"}>
-                    <Icon name="Pin" size={14} />
-                  </button>
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={e => { e.stopPropagation(); handleTogglePin(topic.id); }}
+                      className="w-8 h-8 rounded-lg flex items-center justify-center transition-all"
+                      style={{ background: topic.pinned ? "#FFF3E8" : "transparent", color: topic.pinned ? "#F4720B" : "#9CA3AF" }}
+                      title={topic.pinned ? "Открепить" : "Закрепить"}>
+                      <Icon name="Pin" size={14} />
+                    </button>
+                    <button
+                      onClick={e => { e.stopPropagation(); handleDeleteTopic(topic.id); }}
+                      className="w-8 h-8 rounded-lg flex items-center justify-center transition-all"
+                      style={{ color: "#DC2626" }}
+                      onMouseEnter={e => (e.currentTarget.style.background = "#FEF2F2")}
+                      onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
+                      title="Удалить тему">
+                      <Icon name="Trash2" size={14} />
+                    </button>
+                  </div>
                 )}
                 <div className="flex items-center gap-1 text-sm text-muted-foreground">
                   <Icon name="MessageSquare" size={14} />
