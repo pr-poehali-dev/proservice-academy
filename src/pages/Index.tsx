@@ -487,6 +487,10 @@ function CoursesView({ user }: { user: User }) {
   const [courses, setCourses] = useState<Course[]>(MOCK_COURSES);
   const [newTitle, setNewTitle] = useState("");
   const [newDesc, setNewDesc] = useState("");
+  const [showAddLesson, setShowAddLesson] = useState(false);
+  const [lessonTitle, setLessonTitle] = useState("");
+  const [lessonDuration, setLessonDuration] = useState("");
+  const [lessonHasHomework, setLessonHasHomework] = useState(false);
 
   const handleCreateCourse = () => {
     if (!newTitle.trim()) return;
@@ -502,6 +506,24 @@ function CoursesView({ user }: { user: User }) {
     setNewTitle("");
     setNewDesc("");
     setShowCreate(false);
+  };
+
+  const handleAddLesson = () => {
+    if (!lessonTitle.trim() || !selectedCourse) return;
+    const newLesson: Lesson = {
+      id: Date.now(),
+      title: lessonTitle,
+      duration: lessonDuration || "30 мин",
+      completed: false,
+      hasHomework: lessonHasHomework,
+    };
+    const updated = { ...selectedCourse, lessons: [...selectedCourse.lessons, newLesson] };
+    setCourses(prev => prev.map(c => c.id === selectedCourse.id ? updated : c));
+    setSelectedCourse(updated);
+    setLessonTitle("");
+    setLessonDuration("");
+    setLessonHasHomework(false);
+    setShowAddLesson(false);
   };
 
   if (selectedCourse) {
@@ -557,10 +579,64 @@ function CoursesView({ user }: { user: User }) {
         </div>
 
         {user.role === "trainer" && (
-          <button className="flex items-center gap-2 w-full justify-center py-4 rounded-2xl border-2 border-dashed font-medium text-muted-foreground hover:text-foreground transition-all" style={{ borderColor: "#E0E5EF" }}>
+          <button onClick={() => setShowAddLesson(true)} className="flex items-center gap-2 w-full justify-center py-4 rounded-2xl border-2 border-dashed font-medium text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-all" style={{ borderColor: "#E0E5EF" }}>
             <Icon name="Plus" size={18} />
             Добавить урок
           </button>
+        )}
+
+        {showAddLesson && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.5)", backdropFilter: "blur(4px)" }}>
+            <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl animate-scale-in">
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-lg font-bold text-foreground">Новый урок</h3>
+                <button onClick={() => setShowAddLesson(false)} className="w-8 h-8 rounded-lg flex items-center justify-center text-muted-foreground hover:bg-muted transition-colors">
+                  <Icon name="X" size={16} />
+                </button>
+              </div>
+              <div className="space-y-4">
+                <div>
+                  <label className="text-sm font-medium text-foreground mb-1.5 block">Название урока</label>
+                  <input
+                    value={lessonTitle}
+                    onChange={e => setLessonTitle(e.target.value)}
+                    placeholder="Например: Приём автомобиля по чек-листу"
+                    className="w-full px-4 py-3 rounded-xl text-foreground text-[15px] outline-none"
+                    style={{ background: "#F8F9FB", border: "1.5px solid #E0E5EF" }}
+                    autoFocus
+                  />
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-foreground mb-1.5 block">Продолжительность</label>
+                  <input
+                    value={lessonDuration}
+                    onChange={e => setLessonDuration(e.target.value)}
+                    placeholder="Например: 45 мин"
+                    className="w-full px-4 py-3 rounded-xl text-foreground text-[15px] outline-none"
+                    style={{ background: "#F8F9FB", border: "1.5px solid #E0E5EF" }}
+                  />
+                </div>
+                <label className="flex items-center gap-3 cursor-pointer p-3 rounded-xl transition-colors hover:bg-muted/50">
+                  <div onClick={() => setLessonHasHomework(v => !v)}
+                    className="w-5 h-5 rounded flex items-center justify-center transition-all shrink-0"
+                    style={{ background: lessonHasHomework ? "#F4720B" : "#E0E5EF" }}>
+                    {lessonHasHomework && <Icon name="Check" size={12} className="text-white" />}
+                  </div>
+                  <span className="text-sm font-medium text-foreground">Есть домашнее задание</span>
+                </label>
+                <div className="flex gap-3 pt-2">
+                  <button onClick={() => setShowAddLesson(false)} className="flex-1 py-3 rounded-xl font-medium text-foreground" style={{ background: "#F0F3F8" }}>
+                    Отмена
+                  </button>
+                  <button onClick={handleAddLesson} disabled={!lessonTitle.trim()}
+                    className="flex-1 py-3 rounded-xl font-medium text-white transition-all disabled:opacity-40"
+                    style={{ background: "#F4720B" }}>
+                    Добавить
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
         )}
       </div>
     );
