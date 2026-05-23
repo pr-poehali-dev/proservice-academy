@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from "react";
 import Icon from "@/components/ui/icon";
+import * as API from "@/lib/api";
 
-// ─── localStorage helpers ──────────────────────────────────────────────────────
+// ─── localStorage helpers (кэш для быстрого UI) ────────────────────────────────
 function useLocalStorage<T>(key: string, initial: T): [T, (v: T | ((prev: T) => T)) => void] {
   const [value, setValue] = useState<T>(() => {
     try {
@@ -204,18 +205,26 @@ function LoginPage({ onLogin }: { onLogin: (user: User) => void }) {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const handleLogin = () => {
+  const handleLogin = async () => {
     setLoading(true);
     setError("");
-    setTimeout(() => {
-      const user = MOCK_USERS.find(u => u.email === email);
-      if (user && password === "123456") {
-        onLogin(user);
-      } else {
-        setError("Неверный email или пароль");
-      }
+    try {
+      const raw = await API.apiLogin(email.trim(), password);
+      const u: User = {
+        id: raw.id as number,
+        name: raw.name as string,
+        email: raw.email as string,
+        role: raw.role as Role,
+        avatar: raw.avatar as string,
+        progress: (raw.progress as number) || 0,
+        coursesCompleted: (raw.courses_completed as number) || 0,
+      };
+      onLogin(u);
+    } catch (_e) {
+      setError("Неверный email или пароль");
+    } finally {
       setLoading(false);
-    }, 600);
+    }
   };
 
   return (
@@ -607,7 +616,49 @@ function StudentDashboard({ user, notifications, onMarkRead }: { user: User; not
 function CoursesView({ user }: { user: User }) {
   const [selectedCourse, setSelectedCourse] = useState<Course | null>(null);
   const [showCreate, setShowCreate] = useState(false);
-  const [courses, setCourses] = useLocalStorage<Course[]>("psa_courses", MOCK_COURSES);
+  const [courses, setCourses] = useState<Course[]>([]);
+  const [loadingCourses, setLoadingCourses] = useState(true);
+
+  // Загрузка курсов с сервера + прогресс ученика
+  useEffect(() => {
+    API.apiGetCourses().then(raw => {
+      const mapped = (raw as Record<string, unknown>[]).map(c => {
+        const rawLessons = (c.lessons as Record<string, unknown>[]) || [];
+        return {
+          id: c.id as number,
+          title: c.title as string,
+          description: c.description as string,
+          progress: c.progress as number,
+          studentsCount: c.students_count as number,
+          lessons: rawLessons.map(l => ({
+            id: l.id as number,
+            title: l.title as string,
+            duration: (l.duration as string || '').replace(' min', ' мин'),
+            completed: false,
+            hasHomework: l.has_homework as boolean,
+            status: (l.status as 'draft' | 'published') || 'published',
+            order: l.sort_order as number,
+            content: l.content as string,
+            summary: l.summary as string,
+            homework: l.homework as string,
+            cheatsheet: l.cheatsheet as string,
+          })),
+        } as Course;
+      });
+      // Если ученик — загружаем его прогресс
+      if (user.role === 'student') {
+        API.apiGetProgress(user.id).then(completedIds => {
+          setCourses(mapped.map(c => ({
+            ...c,
+            lessons: c.lessons.map(l => ({ ...l, completed: completedIds.includes(l.id) })),
+          })));
+        }).catch(() => setCourses(mapped));
+      } else {
+        setCourses(mapped);
+      }
+    }).catch(() => setCourses(MOCK_COURSES))
+      .finally(() => setLoadingCourses(false));
+  }, [user.id, user.role]);
   const [newTitle, setNewTitle] = useState("");
   const [newDesc, setNewDesc] = useState("");
   const [showAddLesson, setShowAddLesson] = useState(false);
@@ -629,6 +680,7 @@ function CoursesView({ user }: { user: User }) {
     setCourses(prev => prev.map(c => c.id === selectedCourse.id ? updated : c));
     setSelectedCourse(updated);
     setEditingCourse(false);
+    API.apiUpdateCourse(selectedCourse.id, { title: editCourseTitle, description: editCourseDesc }).catch(() => {});
   };
   const [lessonTitle, setLessonTitle] = useState("");
   const [lessonDuration, setLessonDuration] = useState("");
@@ -656,6 +708,7 @@ function CoursesView({ user }: { user: User }) {
 
   const handleEditLesson = () => {
     if (!lessonTitle.trim() || !selectedCourse || !editingLesson) return;
+    const lessonData = { title: lessonTitle, duration: lessonDuration || "30 мин", has_homework: lessonHasHomework, content: lessonContent, summary: lessonSummary, homework: lessonHomework, cheatsheet: lessonCheatsheet, status: lessonStatus };
     const updated = {
       ...selectedCourse,
       lessons: selectedCourse.lessons.map(l =>
@@ -667,13 +720,17 @@ function CoursesView({ user }: { user: User }) {
     setEditingLesson(null);
     setLessonTitle(""); setLessonDuration(""); setLessonHasHomework(false);
     setLessonContent(""); setLessonSummary(""); setLessonHomework(""); setLessonCheatsheet("");
+    API.apiUpdateLesson(editingLesson.id, lessonData).catch(() => {});
   };
 
   const handleToggleLessonStatus = (lessonId: number) => {
     if (!selectedCourse) return;
-    const updated = { ...selectedCourse, lessons: selectedCourse.lessons.map(l => l.id === lessonId ? { ...l, status: l.status === "published" ? "draft" as const : "published" as const } : l) };
+    const lesson = selectedCourse.lessons.find(l => l.id === lessonId);
+    const newStatus = lesson?.status === "published" ? "draft" : "published";
+    const updated = { ...selectedCourse, lessons: selectedCourse.lessons.map(l => l.id === lessonId ? { ...l, status: newStatus as "draft" | "published" } : l) };
     setCourses(prev => prev.map(c => c.id === selectedCourse.id ? updated : c));
     setSelectedCourse(updated);
+    API.apiUpdateLesson(lessonId, { status: newStatus }).catch(() => {});
   };
 
   const handleDragLesson = (fromIdx: number, toIdx: number) => {
@@ -685,6 +742,7 @@ function CoursesView({ user }: { user: User }) {
     const updated = { ...selectedCourse, lessons: reordered };
     setCourses(prev => prev.map(c => c.id === selectedCourse.id ? updated : c));
     setSelectedCourse(updated);
+    API.apiReorderLessons(reordered.map(l => ({ id: l.id, sort_order: l.order }))).catch(() => {});
   };
 
   const handleDeleteLesson = (lessonId: number) => {
@@ -692,19 +750,26 @@ function CoursesView({ user }: { user: User }) {
     const updated = { ...selectedCourse, lessons: selectedCourse.lessons.filter(l => l.id !== lessonId) };
     setCourses(prev => prev.map(c => c.id === selectedCourse.id ? updated : c));
     setSelectedCourse(updated);
+    // Мягкое удаление через статус (DELETE не поддерживается)
+    API.apiUpdateLesson(lessonId, { status: "draft" }).catch(() => {});
   };
 
   const handleCreateCourse = () => {
     if (!newTitle.trim()) return;
-    const created: Course = {
-      id: courses.length + 10,
-      title: newTitle,
-      description: newDesc,
-      progress: 0,
-      studentsCount: 0,
-      lessons: [],
-    };
-    setCourses(prev => [...prev, created]);
+    API.apiCreateCourse(newTitle, newDesc).then(raw => {
+      const created: Course = {
+        id: (raw as Record<string, unknown>).id as number,
+        title: newTitle,
+        description: newDesc,
+        progress: 0,
+        studentsCount: 0,
+        lessons: [],
+      };
+      setCourses(prev => [...prev, created]);
+    }).catch(() => {
+      const created: Course = { id: Date.now(), title: newTitle, description: newDesc, progress: 0, studentsCount: 0, lessons: [] };
+      setCourses(prev => [...prev, created]);
+    });
     setNewTitle("");
     setNewDesc("");
     setShowCreate(false);
@@ -712,22 +777,36 @@ function CoursesView({ user }: { user: User }) {
 
   const handleAddLesson = () => {
     if (!lessonTitle.trim() || !selectedCourse) return;
-    const newLesson: Lesson = {
-      id: Date.now(),
-      title: lessonTitle,
-      duration: lessonDuration || "30 мин",
-      completed: false,
-      hasHomework: lessonHasHomework,
-      status: lessonStatus,
-      order: selectedCourse.lessons.length + 1,
-      content: lessonContent,
-      summary: lessonSummary,
-      homework: lessonHomework,
-      cheatsheet: lessonCheatsheet,
+    const lessonData = {
+      title: lessonTitle, duration: lessonDuration || "30 мин",
+      has_homework: lessonHasHomework, status: lessonStatus,
+      content: lessonContent, summary: lessonSummary, homework: lessonHomework, cheatsheet: lessonCheatsheet,
     };
-    const updated = { ...selectedCourse, lessons: [...selectedCourse.lessons, newLesson] };
-    setCourses(prev => prev.map(c => c.id === selectedCourse.id ? updated : c));
-    setSelectedCourse(updated);
+    API.apiCreateLesson(selectedCourse.id, lessonData).then(raw => {
+      const r = raw as Record<string, unknown>;
+      const newLesson: Lesson = {
+        id: r.id as number, title: r.title as string,
+        duration: (r.duration as string || '').replace(' min', ' мин'),
+        completed: false, hasHomework: r.has_homework as boolean,
+        status: r.status as "draft" | "published",
+        order: r.sort_order as number,
+        content: r.content as string, summary: r.summary as string,
+        homework: r.homework as string, cheatsheet: r.cheatsheet as string,
+      };
+      const updated = { ...selectedCourse, lessons: [...selectedCourse.lessons, newLesson] };
+      setCourses(prev => prev.map(c => c.id === selectedCourse.id ? updated : c));
+      setSelectedCourse(updated);
+    }).catch(() => {
+      const newLesson: Lesson = {
+        id: Date.now(), title: lessonTitle, duration: lessonDuration || "30 мин",
+        completed: false, hasHomework: lessonHasHomework, status: lessonStatus,
+        order: selectedCourse.lessons.length + 1,
+        content: lessonContent, summary: lessonSummary, homework: lessonHomework, cheatsheet: lessonCheatsheet,
+      };
+      const updated = { ...selectedCourse, lessons: [...selectedCourse.lessons, newLesson] };
+      setCourses(prev => prev.map(c => c.id === selectedCourse.id ? updated : c));
+      setSelectedCourse(updated);
+    });
     setLessonTitle(""); setLessonDuration(""); setLessonHasHomework(false);
     setLessonContent(""); setLessonSummary(""); setLessonHomework(""); setLessonCheatsheet("");
     setShowAddLesson(false);
@@ -944,6 +1023,7 @@ function CoursesView({ user }: { user: User }) {
                   setCourses(prev => prev.map(c => c.id === selectedCourse.id ? updated : c));
                   setSelectedCourse(updated);
                   setViewingLesson({ ...viewingLesson, completed: true });
+                  API.apiMarkLessonDone(user.id, viewingLesson.id).catch(() => {});
                 }}
                 className="w-full py-4 rounded-2xl font-semibold text-white text-[15px] transition-all hover:opacity-90 active:scale-95 flex items-center justify-center gap-2"
                 style={{ background: "linear-gradient(135deg, #1B2A4A 0%, #243558 100%)" }}>
@@ -1288,6 +1368,13 @@ function CoursesView({ user }: { user: User }) {
         </div>
       )}
 
+      {loadingCourses && (
+        <div className="flex items-center justify-center py-12 text-muted-foreground">
+          <Icon name="Loader" size={24} className="animate-spin mr-2" />
+          Загрузка курсов...
+        </div>
+      )}
+
       <div className="grid lg:grid-cols-2 gap-4">
         {courses.map(course => (
           <div key={course.id} className="bg-white rounded-2xl p-6 border border-border/50 hover-lift cursor-pointer" onClick={() => setSelectedCourse(course as Course)}>
@@ -1323,42 +1410,79 @@ function CoursesView({ user }: { user: User }) {
 
 // ─── Homeworks View ────────────────────────────────────────────────────────────
 function HomeworksView({ user, onNotify }: { user: User; onNotify?: (n: Omit<Notification, "id" | "createdAt" | "read">) => void }) {
-  const [homeworks, setHomeworks] = useLocalStorage<HomeworkWithComment[]>("psa_homeworks", MOCK_HOMEWORKS as HomeworkWithComment[]);
+  const [homeworks, setHomeworks] = useState<HomeworkWithComment[]>([]);
   const [selected, setSelected] = useState<HomeworkWithComment | null>(null);
   const [gradeInput, setGradeInput] = useState("");
   const [trainerComment, setTrainerComment] = useState("");
-  // student submit
   const [showSubmit, setShowSubmit] = useState(false);
   const [submitLesson, setSubmitLesson] = useState("");
-  const [submitText, setSubmitText] = useLocalStorage<string>("psa_hw_draft", "");
-  const [studentNotes, setStudentNotes] = useLocalStorage<Record<string, string>>("psa_student_notes", {});
+  const [submitText, setSubmitText] = useState("");
+  const [studentNotes, setStudentNotes] = useState<Record<string, string>>({});
 
+  // Загрузка заданий с сервера
+  useEffect(() => {
+    const load = () => {
+      const params = user.role === 'student' ? user.id : undefined;
+      API.apiGetHomeworks(params).then(raw => {
+        setHomeworks((raw as Record<string, unknown>[]).map(r => ({
+          id: r.id as number,
+          studentName: (r.student_name as string) || '',
+          lessonTitle: r.lesson_title as string,
+          submittedAt: new Date(r.submitted_at as string).toLocaleDateString('ru', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }),
+          status: r.status as "pending" | "checked" | "revision",
+          grade: r.grade as number | undefined,
+          text: r.text as string,
+          trainerComment: (r.trainer_comment as string) || '',
+        })));
+      }).catch(() => setHomeworks(MOCK_HOMEWORKS as HomeworkWithComment[]));
+    };
+    load();
+  }, [user.id, user.role]);
+
+  // Загрузка черновика и заметок для ученика
+  useEffect(() => {
+    if (user.role !== 'student') return;
+    API.apiGetHwDraft(user.id).then(d => { setSubmitLesson(d.lesson_title); setSubmitText(d.text); }).catch(() => {});
+    API.apiGetStudentNotes(user.id).then(d => setStudentNotes({ general: d.notes })).catch(() => {});
+  }, [user.id, user.role]);
+
+  const getStudentIdByName = (name: string) => MOCK_USERS.find(u => u.name === name)?.id ?? 0;
   const getStudentEmail = (name: string) => MOCK_USERS.find(u => u.name === name)?.email ?? "";
 
   const handleAccept = () => {
     if (!selected || !gradeInput) return;
-    const updated = homeworks.map(hw =>
-      hw.id === selected.id ? { ...hw, status: "checked" as const, grade: Number(gradeInput), trainerComment } : hw
-    );
-    setHomeworks(updated);
+    const data = { status: "checked", grade: Number(gradeInput), trainer_comment: trainerComment };
+    setHomeworks(prev => prev.map(hw => hw.id === selected.id ? { ...hw, status: "checked" as const, grade: Number(gradeInput), trainerComment } : hw));
+    API.apiGradeHomework(selected.id, data).catch(() => {});
+    const sid = getStudentIdByName(selected.studentName);
+    if (sid) API.apiCreateNotification({ student_id: sid, lesson_title: selected.lessonTitle, status: "checked", grade: Number(gradeInput) }).catch(() => {});
     onNotify?.({ studentEmail: getStudentEmail(selected.studentName), lessonTitle: selected.lessonTitle, status: "checked", grade: Number(gradeInput) });
     setSelected(null); setGradeInput(""); setTrainerComment("");
   };
 
   const handleRevision = () => {
     if (!selected) return;
-    const updated = homeworks.map(hw =>
-      hw.id === selected.id ? { ...hw, status: "revision" as const, trainerComment } : hw
-    );
-    setHomeworks(updated);
+    const data = { status: "revision", trainer_comment: trainerComment };
+    setHomeworks(prev => prev.map(hw => hw.id === selected.id ? { ...hw, status: "revision" as const, trainerComment } : hw));
+    API.apiGradeHomework(selected.id, data).catch(() => {});
+    const sid = getStudentIdByName(selected.studentName);
+    if (sid) API.apiCreateNotification({ student_id: sid, lesson_title: selected.lessonTitle, status: "revision" }).catch(() => {});
     onNotify?.({ studentEmail: getStudentEmail(selected.studentName), lessonTitle: selected.lessonTitle, status: "revision" });
     setSelected(null); setGradeInput(""); setTrainerComment("");
   };
 
   const handleSubmitHw = () => {
     if (!submitLesson.trim() || !submitText.trim()) return;
-    const hw: HomeworkWithComment = { id: Date.now(), studentName: user.name, lessonTitle: submitLesson, submittedAt: "только что", status: "pending", text: submitText };
-    setHomeworks(prev => [hw, ...prev]);
+    API.apiSubmitHomework({ student_id: user.id, lesson_title: submitLesson, text: submitText }).then(raw => {
+      const r = raw as Record<string, unknown>;
+      const hw: HomeworkWithComment = { id: r.id as number, studentName: user.name, lessonTitle: submitLesson, submittedAt: "только что", status: "pending", text: submitText, trainerComment: '' };
+      setHomeworks(prev => [hw, ...prev]);
+    }).catch(() => {
+      const hw: HomeworkWithComment = { id: Date.now(), studentName: user.name, lessonTitle: submitLesson, submittedAt: "только что", status: "pending", text: submitText, trainerComment: '' };
+      setHomeworks(prev => [hw, ...prev]);
+    });
+    // Очищаем черновик
+    API.apiSaveHwDraft(user.id, '', '').catch(() => {});
     setSubmitText(""); setSubmitLesson(""); setShowSubmit(false);
   };
 
@@ -1436,7 +1560,7 @@ function HomeworksView({ user, onNotify }: { user: User; onNotify?: (n: Omit<Not
           </h3>
           <textarea
             value={studentNotes["general"] || ""}
-            onChange={e => setStudentNotes(prev => ({ ...prev, general: e.target.value }))}
+            onChange={e => { setStudentNotes(prev => ({ ...prev, general: e.target.value })); API.apiSaveStudentNotes(user.id, e.target.value).catch(() => {}); }}
             placeholder="Личный блокнот — записывайте мысли, выводы, вопросы по урокам. Сохраняется автоматически."
             rows={4}
             className="w-full text-foreground text-[15px] resize-none outline-none bg-transparent placeholder-muted-foreground"
@@ -1483,7 +1607,7 @@ function HomeworksView({ user, onNotify }: { user: User; onNotify?: (n: Omit<Not
               style={{ background: "#F8F9FB", border: "1.5px solid #E0E5EF" }} autoFocus />
             <div>
               <textarea value={submitText}
-                onChange={e => setSubmitText(e.target.value)}
+                onChange={e => { setSubmitText(e.target.value); API.apiSaveHwDraft(user.id, submitLesson, e.target.value).catch(() => {}); }}
                 placeholder="Опишите выполненное задание..."
                 rows={5} className="w-full px-4 py-3 rounded-xl text-foreground text-[15px] outline-none resize-none"
                 style={{ background: "#F8F9FB", border: "1.5px solid #E0E5EF" }} />
@@ -1540,16 +1664,31 @@ function HomeworksView({ user, onNotify }: { user: User; onNotify?: (n: Omit<Not
 
 // ─── Students View ────────────────────────────────────────────────────────────
 function StudentsView() {
-  const [students, setStudents] = useLocalStorage<User[]>("psa_students", MOCK_USERS.filter(u => u.role === "student"));
+  const [students, setStudents] = useState<User[]>([]);
   const [showAdd, setShowAdd] = useState(false);
   const [newName, setNewName] = useState("");
   const [newEmail, setNewEmail] = useState("");
   const [confirmDelete, setConfirmDelete] = useState<number | null>(null);
   const [generatedPassword, setGeneratedPassword] = useState<string | null>(null);
-  const [studentMeta, setStudentMeta] = useLocalStorage<Record<number, StudentMeta>>("psa_student_meta", {});
+  const [studentMeta, setStudentMeta] = useState<Record<number, StudentMeta>>({});
   const [expandedStudent, setExpandedStudent] = useState<number | null>(null);
-  const [docs, setDocs] = useLocalStorage<Record<number, StudentDoc[]>>("psa_student_docs", {});
+  const [docs, setDocs] = useState<Record<number, StudentDoc[]>>({});
   const [expandedDocs, setExpandedDocs] = useState<number | null>(null);
+
+  // Загрузка учеников с сервера
+  useEffect(() => {
+    API.apiGetStudents().then(raw => {
+      setStudents((raw as Record<string, unknown>[]).map(u => ({
+        id: u.id as number,
+        name: u.name as string,
+        email: u.email as string,
+        role: "student" as Role,
+        avatar: u.avatar as string,
+        progress: (u.progress as number) || 0,
+        coursesCompleted: (u.courses_completed as number) || 0,
+      })));
+    }).catch(() => setStudents(MOCK_USERS.filter(u => u.role === "student")));
+  }, []);
   const [uploadModal, setUploadModal] = useState<number | null>(null);
   const [docLabel, setDocLabel] = useState("");
   const [pendingFile, setPendingFile] = useState<{ name: string; size: string; type: string; dataUrl: string } | null>(null);
@@ -1590,8 +1729,10 @@ function StudentsView() {
     if (!pendingFile || uploadModal === null) return;
     const now = new Date();
     const date = `${now.getDate()} ${["янв","фев","мар","апр","май","июн","июл","авг","сен","окт","ноя","дек"][now.getMonth()]}, ${now.getHours()}:${String(now.getMinutes()).padStart(2,"0")}`;
-    const doc: StudentDoc = { id: Date.now(), name: pendingFile.name, label: docLabel.trim() || pendingFile.name, uploadedAt: date, size: pendingFile.size, type: pendingFile.type, dataUrl: pendingFile.dataUrl };
+    const label = docLabel.trim() || pendingFile.name;
+    const doc: StudentDoc = { id: Date.now(), name: pendingFile.name, label, uploadedAt: date, size: pendingFile.size, type: pendingFile.type, dataUrl: pendingFile.dataUrl };
     setDocs(prev => ({ ...prev, [uploadModal]: [...(prev[uploadModal] || []), doc] }));
+    API.apiUploadStudentDoc({ student_id: uploadModal, name: pendingFile.name, label, size: pendingFile.size, file_type: pendingFile.type, data_url: pendingFile.dataUrl }).catch(() => {});
     setPendingFile(null); setDocLabel(""); setUploadModal(null);
   };
 
@@ -1608,14 +1749,26 @@ function StudentsView() {
   const handleAddStudent = () => {
     if (!newName.trim() || !newEmail.trim()) return;
     const pwd = generatePassword();
-    const student: User = { id: Date.now(), name: newName, email: newEmail, role: "student", avatar: newName.split(" ").map(n => n[0]).join("").slice(0, 2).toUpperCase(), progress: 0, coursesCompleted: 0 };
-    setStudents(prev => [...prev, student]);
+    API.apiCreateStudent({ name: newName, email: newEmail, password: pwd }).then(raw => {
+      const u = raw as Record<string, unknown>;
+      const student: User = { id: u.id as number, name: u.name as string, email: u.email as string, role: "student", avatar: u.avatar as string, progress: 0, coursesCompleted: 0 };
+      setStudents(prev => [...prev, student]);
+    }).catch(() => {
+      const student: User = { id: Date.now(), name: newName, email: newEmail, role: "student", avatar: newName.split(" ").map(n => n[0]).join("").slice(0, 2).toUpperCase(), progress: 0, coursesCompleted: 0 };
+      setStudents(prev => [...prev, student]);
+    });
     setGeneratedPassword(pwd);
     setNewName(""); setNewEmail(""); setShowAdd(false);
   };
 
   const updateMeta = (studentId: number, patch: Partial<StudentMeta>) => {
-    setStudentMeta(prev => ({ ...prev, [studentId]: { ...(prev[studentId] || { studentId }), ...patch } }));
+    const updated = { ...(studentMeta[studentId] || { studentId }), ...patch };
+    setStudentMeta(prev => ({ ...prev, [studentId]: updated }));
+    API.apiSaveStudentMeta(studentId, {
+      candidate_status: updated.candidateStatus,
+      candidate_comment: updated.candidateComment,
+      trainer_notes: updated.trainerNotes,
+    }).catch(() => {});
   };
 
   return (
@@ -1952,8 +2105,9 @@ function ConfirmDialog({ message, onConfirm, onCancel }: { message: string; onCo
 
 // ─── Forum View ───────────────────────────────────────────────────────────────
 function ForumView({ user }: { user: User }) {
-  const [topics, setTopics] = useLocalStorage<ForumTopic[]>("psa_forum_topics", MOCK_FORUM);
+  const [topics, setTopics] = useState<ForumTopic[]>([]);
   const [selectedTopic, setSelectedTopic] = useState<ForumTopic | null>(null);
+  const [topicPosts, setTopicPosts] = useState<ForumPost[]>([]);
   const [newMsg, setNewMsg] = useState("");
   const [showNewTopic, setShowNewTopic] = useState(false);
   const [newTopicTitle, setNewTopicTitle] = useState("");
@@ -1963,33 +2117,81 @@ function ForumView({ user }: { user: User }) {
 
   const authorRole = user.role === "trainer" ? "Тренер" : "Ученик";
 
+  // Загрузка тем
+  const loadTopics = () => {
+    API.apiGetForumTopics().then(raw => {
+      setTopics((raw as Record<string, unknown>[]).map(t => {
+        const fp = t.first_post as Record<string, unknown> | null;
+        return {
+          id: t.id as number,
+          title: t.title as string,
+          author: (t.author_name as string) || '',
+          avatar: (t.author_avatar as string) || '?',
+          role: (t.author_role as string) === 'trainer' ? 'Тренер' : 'Ученик',
+          createdAt: new Date(t.created_at as string).toLocaleDateString('ru', { day: 'numeric', month: 'short' }),
+          pinned: t.pinned as boolean,
+          closed: t.closed as boolean,
+          posts: fp ? [{
+            id: fp.id as number, author: fp.author_name as string,
+            avatar: (fp.author_avatar as string) || '?',
+            role: (fp.author_role as string) === 'trainer' ? 'Тренер' : 'Ученик',
+            text: fp.text as string, time: '', likes: fp.likes as number,
+          }] : [],
+          postsCount: t.posts_count as number,
+        } as ForumTopic & { postsCount: number };
+      }));
+    }).catch(() => setTopics(MOCK_FORUM));
+  };
+
+  useEffect(() => { loadTopics(); }, []);
+
+  // Загрузка постов темы
+  const openTopic = (t: ForumTopic) => {
+    setSelectedTopic(t);
+    API.apiGetTopicPosts(t.id).then(raw => {
+      setTopicPosts((raw as Record<string, unknown>[]).map(p => ({
+        id: p.id as number,
+        author: (p.author_name as string) || '',
+        avatar: (p.author_avatar as string) || '?',
+        role: (p.author_role as string) === 'trainer' ? 'Тренер' : 'Ученик',
+        text: p.text as string,
+        time: new Date(p.created_at as string).toLocaleTimeString('ru', { hour: '2-digit', minute: '2-digit' }),
+        likes: p.likes as number,
+      })));
+    }).catch(() => setTopicPosts(t.posts));
+  };
+
   const handleCreateTopic = () => {
     if (!newTopicTitle.trim() || !newTopicText.trim()) return;
-    const topic: ForumTopic = {
-      id: Date.now(),
-      title: newTopicTitle,
-      author: user.name, avatar: user.avatar, role: authorRole,
-      createdAt: "только что",
-      posts: [{
-        id: 1, author: user.name, avatar: user.avatar, role: authorRole,
-        text: newTopicText, time: "только что", likes: 0,
-      }],
-    };
-    setTopics(prev => [topic, ...prev]);
+    API.apiCreateTopic({ title: newTopicTitle, author_id: user.id, text: newTopicText }).then(raw => {
+      const r = raw as Record<string, unknown>;
+      const topic: ForumTopic = {
+        id: r.id as number, title: newTopicTitle,
+        author: user.name, avatar: user.avatar, role: authorRole,
+        createdAt: "только что", pinned: false, closed: false,
+        posts: [{ id: Date.now(), author: user.name, avatar: user.avatar, role: authorRole, text: newTopicText, time: "только что", likes: 0 }],
+      };
+      setTopics(prev => [topic, ...prev]);
+      setTopicPosts(topic.posts);
+      setSelectedTopic(topic);
+    }).catch(() => {});
     setNewTopicTitle(""); setNewTopicText("");
     setShowNewTopic(false);
-    setSelectedTopic(topic);
   };
 
   const handleSendMessage = () => {
     if (!newMsg.trim() || !selectedTopic) return;
-    const post: ForumPost = {
-      id: Date.now(), author: user.name, avatar: user.avatar,
-      role: authorRole, text: newMsg, time: "только что", likes: 0,
-    };
-    const updated = { ...selectedTopic, posts: [...selectedTopic.posts, post] };
-    setTopics(prev => prev.map(t => t.id === selectedTopic.id ? updated : t));
-    setSelectedTopic(updated);
+    API.apiPostMessage(selectedTopic.id, { author_id: user.id, text: newMsg }).then(raw => {
+      const r = raw as Record<string, unknown>;
+      const post: ForumPost = {
+        id: r.id as number, author: user.name, avatar: user.avatar,
+        role: authorRole, text: newMsg, time: "только что", likes: 0,
+      };
+      setTopicPosts(prev => [...prev, post]);
+    }).catch(() => {
+      const post: ForumPost = { id: Date.now(), author: user.name, avatar: user.avatar, role: authorRole, text: newMsg, time: "только что", likes: 0 };
+      setTopicPosts(prev => [...prev, post]);
+    });
     setNewMsg("");
   };
 
@@ -2008,38 +2210,35 @@ function ForumView({ user }: { user: User }) {
     setConfirm({
       message: "Сообщение будет удалено безвозвратно.",
       onConfirm: () => {
-        if (!selectedTopic) return;
-        const updatedPosts = selectedTopic.posts.filter(p => p.id !== postId);
-        const updated = { ...selectedTopic, posts: updatedPosts };
-        setTopics(prev => prev.map(t => t.id === selectedTopic.id ? updated : t));
-        setSelectedTopic(updated);
+        setTopicPosts(prev => prev.filter(p => p.id !== postId));
         setConfirm(null);
       },
     });
   };
 
   const handleTogglePin = (topicId: number) => {
+    const topic = topics.find(t => t.id === topicId);
+    const newVal = !topic?.pinned;
     setTopics(prev => {
-      const updated = prev.map(t => t.id === topicId ? { ...t, pinned: !t.pinned } : t);
+      const updated = prev.map(t => t.id === topicId ? { ...t, pinned: newVal } : t);
       return [...updated.filter(t => t.pinned), ...updated.filter(t => !t.pinned)];
     });
+    API.apiUpdateTopic(topicId, { pinned: newVal }).catch(() => {});
   };
 
   const handleToggleClose = (topicId: number) => {
-    setTopics(prev => prev.map(t => t.id === topicId ? { ...t, closed: !t.closed } : t));
-    if (selectedTopic?.id === topicId) setSelectedTopic(prev => prev ? { ...prev, closed: !prev.closed } : null);
+    const topic = topics.find(t => t.id === topicId);
+    const newVal = !topic?.closed;
+    setTopics(prev => prev.map(t => t.id === topicId ? { ...t, closed: newVal } : t));
+    if (selectedTopic?.id === topicId) setSelectedTopic(prev => prev ? { ...prev, closed: newVal } : null);
+    API.apiUpdateTopic(topicId, { closed: newVal }).catch(() => {});
   };
 
   const handleLike = (postId: number) => {
-    if (!selectedTopic) return;
-    if (likedPosts.includes(postId)) return;
+    if (!selectedTopic || likedPosts.includes(postId)) return;
     setLikedPosts(prev => [...prev, postId]);
-    const updated = {
-      ...selectedTopic,
-      posts: selectedTopic.posts.map(p => p.id === postId ? { ...p, likes: p.likes + 1 } : p),
-    };
-    setTopics(prev => prev.map(t => t.id === selectedTopic.id ? updated : t));
-    setSelectedTopic(updated);
+    setTopicPosts(prev => prev.map(p => p.id === postId ? { ...p, likes: p.likes + 1 } : p));
+    API.apiLikePost(postId, user.id).catch(() => {});
   };
 
   // ── Открытая тема ──
@@ -2084,7 +2283,7 @@ function ForumView({ user }: { user: User }) {
         </div>
 
         <div className="space-y-3">
-          {selectedTopic.posts.map((post, idx) => (
+          {topicPosts.map((post, idx) => (
             <div key={post.id} className="bg-white rounded-2xl p-5 border border-border/50"
               style={idx === 0 ? { borderLeft: "3px solid #F4720B" } : {}}>
               <div className="flex items-start gap-3">
@@ -2210,7 +2409,7 @@ function ForumView({ user }: { user: User }) {
         {topics.map(topic => (
           <div key={topic.id} className="bg-white rounded-2xl p-5 border border-border/50 hover-lift cursor-pointer"
             style={topic.pinned ? { borderColor: "#F4720B", borderWidth: "1.5px" } : {}}
-            onClick={() => setSelectedTopic(topic)}>
+            onClick={() => openTopic(topic)}>
             <div className="flex items-start gap-3">
               <div className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-sm shrink-0" style={{ background: "#1B2A4A" }}>
                 {topic.avatar}
@@ -2255,12 +2454,12 @@ function ForumView({ user }: { user: User }) {
                 )}
                 <div className="flex items-center gap-1 text-sm text-muted-foreground">
                   <Icon name="MessageSquare" size={14} />
-                  {topic.posts.length}
+                  {(topic as ForumTopic & { postsCount?: number }).postsCount ?? topic.posts.length}
                 </div>
               </div>
             </div>
             <p className="text-sm text-muted-foreground mt-3 line-clamp-2" style={{ paddingLeft: "52px" }}>
-              {topic.posts[0].text}
+              {topic.posts[0]?.text || ''}
             </p>
           </div>
         ))}
@@ -2376,12 +2575,29 @@ export default function Index() {
   const [user, setUser] = useLocalStorage<User | null>("psa_user", null);
   const [activeTab, setActiveTab] = useLocalStorage<string>("psa_tab", "dashboard");
   const [presentMode, setPresentMode] = useState(false);
-  const [notifications, setNotifications] = useLocalStorage<Notification[]>("psa_notifications", []);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
 
   // Восстанавливаем presentMode если пользователь — презентация
   useEffect(() => {
     if (user?.role === "presentation") setPresentMode(true);
   }, []);
+
+  // Загрузка уведомлений с сервера для ученика
+  useEffect(() => {
+    if (user?.role === 'student') {
+      API.apiGetNotifications(user.id).then(raw => {
+        setNotifications((raw as Record<string, unknown>[]).map(n => ({
+          id: n.id as number,
+          studentEmail: user.email,
+          lessonTitle: n.lesson_title as string,
+          status: n.status as "checked" | "revision",
+          grade: n.grade as number | undefined,
+          createdAt: new Date(n.created_at as string).toLocaleTimeString('ru', { hour: '2-digit', minute: '2-digit' }),
+          read: n.is_read as boolean,
+        })));
+      }).catch(() => {});
+    }
+  }, [user?.id, user?.role, user?.email]);
 
   const addNotification = (n: Omit<Notification, "id" | "createdAt" | "read">) => {
     setNotifications(prev => [...prev, {
@@ -2394,6 +2610,7 @@ export default function Index() {
 
   const markAllRead = (email: string) => {
     setNotifications(prev => prev.map(n => n.studentEmail === email ? { ...n, read: true } : n));
+    if (user?.role === 'student') API.apiMarkNotificationsRead(user.id).catch(() => {});
   };
 
   const handleLogin = (u: User) => {
@@ -2405,6 +2622,7 @@ export default function Index() {
     setUser(null);
     setPresentMode(false);
     setActiveTab("dashboard");
+    setNotifications([]);
   };
 
   if (!user) return <LoginPage onLogin={handleLogin} />;

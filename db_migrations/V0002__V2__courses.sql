@@ -1,0 +1,1 @@
+CREATE TABLE psa_courses (id SERIAL PRIMARY KEY, title TEXT NOT NULL, description TEXT DEFAULT '', progress INTEGER DEFAULT 0, students_count INTEGER DEFAULT 0, sort_order INTEGER DEFAULT 0, created_at TIMESTAMPTZ DEFAULT NOW());

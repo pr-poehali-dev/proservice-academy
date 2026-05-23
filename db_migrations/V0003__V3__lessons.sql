@@ -1,0 +1,1 @@
+CREATE TABLE psa_lessons (id SERIAL PRIMARY KEY, title TEXT NOT NULL);
