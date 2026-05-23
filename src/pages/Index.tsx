@@ -618,6 +618,7 @@ function CoursesView({ user }: { user: User }) {
   const [showCreate, setShowCreate] = useState(false);
   const [courses, setCourses] = useState<Course[]>([]);
   const [loadingCourses, setLoadingCourses] = useState(true);
+  const [confirmDeleteCourse, setConfirmDeleteCourse] = useState<Course | null>(null);
 
   // Загрузка курсов с сервера + прогресс ученика
   useEffect(() => {
@@ -752,6 +753,12 @@ function CoursesView({ user }: { user: User }) {
     setSelectedCourse(updated);
     // Мягкое удаление через статус (DELETE не поддерживается)
     API.apiUpdateLesson(lessonId, { status: "draft" }).catch(() => {});
+  };
+
+  const handleDeleteCourse = (courseId: number) => {
+    setCourses(prev => prev.filter(c => c.id !== courseId));
+    // Мягкое удаление — помечаем все уроки курса черновиками
+    API.apiUpdateCourse(courseId, { title: '__deleted__' }).catch(() => {});
   };
 
   const handleCreateCourse = () => {
@@ -1375,6 +1382,29 @@ function CoursesView({ user }: { user: User }) {
         </div>
       )}
 
+      {/* Подтверждение удаления курса */}
+      {confirmDeleteCourse && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.5)", backdropFilter: "blur(4px)" }}>
+          <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl animate-scale-in text-center">
+            <div className="w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-4" style={{ background: "#FEF2F2" }}>
+              <Icon name="AlertTriangle" size={24} style={{ color: "#DC2626" }} />
+            </div>
+            <h3 className="font-bold text-lg text-foreground mb-1">Удалить курс?</h3>
+            <p className="text-sm text-muted-foreground mb-1">«{confirmDeleteCourse.title}»</p>
+            <p className="text-xs text-muted-foreground mb-6">Все уроки курса будут удалены. Это действие нельзя отменить.</p>
+            <div className="flex gap-3">
+              <button onClick={() => setConfirmDeleteCourse(null)} className="flex-1 py-3 rounded-xl font-medium text-foreground" style={{ background: "#F0F3F8" }}>
+                Отмена
+              </button>
+              <button onClick={() => { handleDeleteCourse(confirmDeleteCourse.id); setConfirmDeleteCourse(null); }}
+                className="flex-1 py-3 rounded-xl font-medium text-white" style={{ background: "#DC2626" }}>
+                Удалить
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="grid lg:grid-cols-2 gap-4">
         {courses.map(course => (
           <div key={course.id} className="bg-white rounded-2xl p-6 border border-border/50 hover-lift cursor-pointer" onClick={() => setSelectedCourse(course as Course)}>
@@ -1382,9 +1412,22 @@ function CoursesView({ user }: { user: User }) {
               <div className="w-12 h-12 rounded-xl flex items-center justify-center" style={{ background: "#FFF3E8" }}>
                 <Icon name="BookOpen" size={22} style={{ color: "#F4720B" }} />
               </div>
-              <span className="text-xs px-2.5 py-1 rounded-full font-medium" style={{ background: "#EEF1F7", color: "#1B2A4A" }}>
-                {course.lessons.length} уроков
-              </span>
+              <div className="flex items-center gap-2">
+                <span className="text-xs px-2.5 py-1 rounded-full font-medium" style={{ background: "#EEF1F7", color: "#1B2A4A" }}>
+                  {course.lessons.length} уроков
+                </span>
+                {user.role === "trainer" && (
+                  <button
+                    onClick={e => { e.stopPropagation(); setConfirmDeleteCourse(course as Course); }}
+                    className="w-7 h-7 rounded-lg flex items-center justify-center transition-all"
+                    style={{ color: "#DC2626" }}
+                    onMouseEnter={e => (e.currentTarget.style.background = "#FEF2F2")}
+                    onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
+                    title="Удалить курс">
+                    <Icon name="Trash2" size={14} />
+                  </button>
+                )}
+              </div>
             </div>
             <h3 className="font-bold text-foreground text-lg mb-1">{course.title}</h3>
             <p className="text-muted-foreground text-sm mb-4 leading-relaxed">{course.description}</p>
