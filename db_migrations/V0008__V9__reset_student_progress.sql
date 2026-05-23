@@ -1,0 +1,1 @@
+UPDATE psa_users SET progress = 0, courses_completed = 0 WHERE role = 'student';

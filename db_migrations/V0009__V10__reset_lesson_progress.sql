@@ -1,0 +1,1 @@
+UPDATE psa_lesson_progress SET completed = false WHERE completed = true;
