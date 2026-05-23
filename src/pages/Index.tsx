@@ -489,6 +489,24 @@ function CoursesView({ user }: { user: User }) {
   const [newDesc, setNewDesc] = useState("");
   const [showAddLesson, setShowAddLesson] = useState(false);
   const [editingLesson, setEditingLesson] = useState<Lesson | null>(null);
+  const [editingCourse, setEditingCourse] = useState(false);
+  const [editCourseTitle, setEditCourseTitle] = useState("");
+  const [editCourseDesc, setEditCourseDesc] = useState("");
+
+  const openEditCourse = () => {
+    if (!selectedCourse) return;
+    setEditCourseTitle(selectedCourse.title);
+    setEditCourseDesc(selectedCourse.description);
+    setEditingCourse(true);
+  };
+
+  const handleSaveCourse = () => {
+    if (!editCourseTitle.trim() || !selectedCourse) return;
+    const updated = { ...selectedCourse, title: editCourseTitle, description: editCourseDesc };
+    setCourses(prev => prev.map(c => c.id === selectedCourse.id ? updated : c));
+    setSelectedCourse(updated);
+    setEditingCourse(false);
+  };
   const [lessonTitle, setLessonTitle] = useState("");
   const [lessonDuration, setLessonDuration] = useState("");
   const [lessonHasHomework, setLessonHasHomework] = useState(false);
@@ -564,12 +582,58 @@ function CoursesView({ user }: { user: User }) {
         </button>
 
         <div className="rounded-2xl p-6" style={{ background: "linear-gradient(135deg, #1B2A4A 0%, #243558 100%)" }}>
-          <h1 className="text-white text-2xl font-bold mb-2">{selectedCourse.title}</h1>
+          <div className="flex items-start justify-between gap-4 mb-2">
+            <h1 className="text-white text-2xl font-bold">{selectedCourse.title}</h1>
+            {user.role === "trainer" && (
+              <button onClick={openEditCourse}
+                className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 transition-all hover:opacity-80"
+                style={{ background: "rgba(255,255,255,0.15)" }}>
+                <Icon name="Pencil" size={15} className="text-white" />
+              </button>
+            )}
+          </div>
           <p className="text-white/60 mb-4">{selectedCourse.description}</p>
           <div className="flex items-center gap-6 text-sm text-white/60">
             <span className="flex items-center gap-1.5"><Icon name="BookOpen" size={14} />{selectedCourse.lessons.length} уроков</span>
             {user.role === "trainer" && <span className="flex items-center gap-1.5"><Icon name="Users" size={14} />{selectedCourse.studentsCount} учеников</span>}
           </div>
+
+          {editingCourse && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.5)", backdropFilter: "blur(4px)" }}>
+              <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl animate-scale-in">
+                <div className="flex items-center justify-between mb-6">
+                  <h3 className="text-lg font-bold text-foreground">Редактировать курс</h3>
+                  <button onClick={() => setEditingCourse(false)} className="w-8 h-8 rounded-lg flex items-center justify-center text-muted-foreground hover:bg-muted transition-colors">
+                    <Icon name="X" size={16} />
+                  </button>
+                </div>
+                <div className="space-y-4">
+                  <div>
+                    <label className="text-sm font-medium text-foreground mb-1.5 block">Название курса</label>
+                    <input value={editCourseTitle} onChange={e => setEditCourseTitle(e.target.value)}
+                      className="w-full px-4 py-3 rounded-xl text-foreground text-[15px] outline-none"
+                      style={{ background: "#F8F9FB", border: "1.5px solid #E0E5EF" }} autoFocus />
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium text-foreground mb-1.5 block">Описание</label>
+                    <textarea value={editCourseDesc} onChange={e => setEditCourseDesc(e.target.value)}
+                      rows={3} className="w-full px-4 py-3 rounded-xl text-foreground text-[15px] outline-none resize-none"
+                      style={{ background: "#F8F9FB", border: "1.5px solid #E0E5EF" }} />
+                  </div>
+                  <div className="flex gap-3 pt-2">
+                    <button onClick={() => setEditingCourse(false)} className="flex-1 py-3 rounded-xl font-medium text-foreground" style={{ background: "#F0F3F8" }}>
+                      Отмена
+                    </button>
+                    <button onClick={handleSaveCourse} disabled={!editCourseTitle.trim()}
+                      className="flex-1 py-3 rounded-xl font-medium text-white disabled:opacity-40"
+                      style={{ background: "#F4720B" }}>
+                      Сохранить
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
           {user.role === "student" && (
             <div className="mt-4">
               <div className="flex justify-between text-sm mb-2">
