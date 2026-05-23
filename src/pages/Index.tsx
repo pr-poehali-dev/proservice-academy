@@ -51,6 +51,16 @@ interface ForumPost {
   role: string;
 }
 
+interface ForumTopic {
+  id: number;
+  title: string;
+  author: string;
+  avatar: string;
+  role: string;
+  createdAt: string;
+  posts: ForumPost[];
+}
+
 interface Notification {
   id: number;
   studentEmail: string;
@@ -105,10 +115,26 @@ const MOCK_HOMEWORKS: Homework[] = [
   { id: 3, studentName: "Олег Диагностов", lessonTitle: "Работа с клиентскими возражениями", submittedAt: "18 мая, 11:45", status: "revision", text: "Попробовал метод «да, и...». Работает не всегда, нужно больше практики..." },
 ];
 
-const MOCK_FORUM: ForumPost[] = [
-  { id: 1, author: "Александр Тренеров", avatar: "АТ", role: "Тренер", text: "Коллеги, разбираем сегодня на примере: клиент приезжает, говорит что масло меняли 2 месяца назад, а по щупу уровень критический. Как будете действовать?", time: "2 ч назад", likes: 3 },
-  { id: 2, author: "Иван Мастеров", avatar: "ИМ", role: "Ученик", text: "Сначала попрошу ключи, проверю пробег по одометру. Если пробег большой — предложу дополнительную диагностику и объясню клиенту возможные причины.", time: "1 ч назад", likes: 5 },
-  { id: 3, author: "Олег Диагностов", avatar: "ОД", role: "Ученик", text: "Я бы ещё проверил наличие подтёков снизу. Часто бывает, что масло уходит незаметно из-за прокладки клапанной крышки.", time: "45 мин назад", likes: 7 },
+const MOCK_FORUM: ForumTopic[] = [
+  {
+    id: 1,
+    title: "Клиент говорит, что масло меняли недавно, а уровень критический",
+    author: "Александр Тренеров", avatar: "АТ", role: "Тренер", createdAt: "20 мая",
+    posts: [
+      { id: 1, author: "Александр Тренеров", avatar: "АТ", role: "Тренер", text: "Коллеги, разбираем на примере: клиент приезжает, говорит что масло меняли 2 месяца назад, а по щупу уровень критический. Как будете действовать?", time: "2 ч назад", likes: 3 },
+      { id: 2, author: "Иван Мастеров", avatar: "ИМ", role: "Ученик", text: "Сначала попрошу ключи, проверю пробег по одометру. Если пробег большой — предложу дополнительную диагностику и объясню клиенту возможные причины.", time: "1 ч назад", likes: 5 },
+      { id: 3, author: "Олег Диагностов", avatar: "ОД", role: "Ученик", text: "Я бы ещё проверил наличие подтёков снизу. Часто бывает, что масло уходит незаметно из-за прокладки клапанной крышки.", time: "45 мин назад", likes: 7 },
+    ]
+  },
+  {
+    id: 2,
+    title: "Как правильно объяснить клиенту необходимость дополнительных работ?",
+    author: "Иван Мастеров", avatar: "ИМ", role: "Ученик", createdAt: "19 мая",
+    posts: [
+      { id: 1, author: "Иван Мастеров", avatar: "ИМ", role: "Ученик", text: "Столкнулся с ситуацией: клиент сдаёт машину на ТО, во время осмотра нахожу изношенные тормозные колодки. Как убедить его заменить сейчас, не создавая ощущение «развода»?", time: "вчера", likes: 2 },
+      { id: 2, author: "Александр Тренеров", avatar: "АТ", role: "Тренер", text: "Ключ — показать, а не рассказать. Предложите клиенту пройти с вами к машине и посмотреть самому. Видимый износ убеждает лучше любых слов.", time: "вчера", likes: 8 },
+    ]
+  },
 ];
 
 const SLIDE_DATA = [
@@ -1196,71 +1222,209 @@ function StudentsView() {
 
 // ─── Forum View ───────────────────────────────────────────────────────────────
 function ForumView({ user }: { user: User }) {
-  const [posts, setPosts] = useState(MOCK_FORUM);
+  const [topics, setTopics] = useState<ForumTopic[]>(MOCK_FORUM);
+  const [selectedTopic, setSelectedTopic] = useState<ForumTopic | null>(null);
   const [newMsg, setNewMsg] = useState("");
+  const [showNewTopic, setShowNewTopic] = useState(false);
+  const [newTopicTitle, setNewTopicTitle] = useState("");
+  const [newTopicText, setNewTopicText] = useState("");
+  const [likedPosts, setLikedPosts] = useState<number[]>([]);
 
-  const send = () => {
-    if (!newMsg.trim()) return;
-    setPosts(prev => [...prev, {
-      id: prev.length + 1,
-      author: user.name,
-      avatar: user.avatar,
-      role: user.role === "trainer" ? "Тренер" : "Ученик",
-      text: newMsg,
-      time: "только что",
-      likes: 0,
-    }]);
+  const authorRole = user.role === "trainer" ? "Тренер" : "Ученик";
+
+  const handleCreateTopic = () => {
+    if (!newTopicTitle.trim() || !newTopicText.trim()) return;
+    const topic: ForumTopic = {
+      id: Date.now(),
+      title: newTopicTitle,
+      author: user.name, avatar: user.avatar, role: authorRole,
+      createdAt: "только что",
+      posts: [{
+        id: 1, author: user.name, avatar: user.avatar, role: authorRole,
+        text: newTopicText, time: "только что", likes: 0,
+      }],
+    };
+    setTopics(prev => [topic, ...prev]);
+    setNewTopicTitle(""); setNewTopicText("");
+    setShowNewTopic(false);
+    setSelectedTopic(topic);
+  };
+
+  const handleSendMessage = () => {
+    if (!newMsg.trim() || !selectedTopic) return;
+    const post: ForumPost = {
+      id: Date.now(), author: user.name, avatar: user.avatar,
+      role: authorRole, text: newMsg, time: "только что", likes: 0,
+    };
+    const updated = { ...selectedTopic, posts: [...selectedTopic.posts, post] };
+    setTopics(prev => prev.map(t => t.id === selectedTopic.id ? updated : t));
+    setSelectedTopic(updated);
     setNewMsg("");
   };
 
+  const handleLike = (postId: number) => {
+    if (!selectedTopic) return;
+    if (likedPosts.includes(postId)) return;
+    setLikedPosts(prev => [...prev, postId]);
+    const updated = {
+      ...selectedTopic,
+      posts: selectedTopic.posts.map(p => p.id === postId ? { ...p, likes: p.likes + 1 } : p),
+    };
+    setTopics(prev => prev.map(t => t.id === selectedTopic.id ? updated : t));
+    setSelectedTopic(updated);
+  };
+
+  // ── Открытая тема ──
+  if (selectedTopic) {
+    return (
+      <div className="animate-fade-in space-y-4">
+        <button onClick={() => setSelectedTopic(null)} className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors text-sm font-medium">
+          <Icon name="ArrowLeft" size={16} />
+          Все темы
+        </button>
+
+        <div className="bg-white rounded-2xl p-5 border border-border/50">
+          <h1 className="text-lg font-bold text-foreground">{selectedTopic.title}</h1>
+          <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground">
+            <span>{selectedTopic.author}</span>
+            <span>·</span>
+            <span>{selectedTopic.createdAt}</span>
+            <span>·</span>
+            <span>{selectedTopic.posts.length} {selectedTopic.posts.length === 1 ? "ответ" : "ответа"}</span>
+          </div>
+        </div>
+
+        <div className="space-y-3">
+          {selectedTopic.posts.map((post, idx) => (
+            <div key={post.id} className="bg-white rounded-2xl p-5 border border-border/50"
+              style={idx === 0 ? { borderLeft: "3px solid #F4720B" } : {}}>
+              <div className="flex items-start gap-3">
+                <div className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-sm shrink-0" style={{ background: "#1B2A4A" }}>
+                  {post.avatar}
+                </div>
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 flex-wrap mb-2">
+                    <span className="font-semibold text-foreground">{post.author}</span>
+                    <span className="text-xs px-2 py-0.5 rounded-full font-medium"
+                      style={{ background: post.role === "Тренер" ? "#FFF3E8" : "#EEF1F7", color: post.role === "Тренер" ? "#F4720B" : "#1B2A4A" }}>
+                      {post.role}
+                    </span>
+                    <span className="text-xs text-muted-foreground ml-auto">{post.time}</span>
+                  </div>
+                  <p className="text-foreground leading-relaxed">{post.text}</p>
+                  <button onClick={() => handleLike(post.id)}
+                    className="flex items-center gap-1.5 mt-3 text-sm transition-colors"
+                    style={{ color: likedPosts.includes(post.id) ? "#F4720B" : "#9CA3AF" }}>
+                    <Icon name="Heart" size={14} />
+                    {post.likes}
+                  </button>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="bg-white rounded-2xl p-4 border border-border/50">
+          <textarea value={newMsg} onChange={e => setNewMsg(e.target.value)}
+            placeholder="Напишите ответ..."
+            rows={3}
+            className="w-full text-foreground text-[15px] resize-none outline-none bg-transparent placeholder-muted-foreground"
+          />
+          <div className="flex justify-end mt-2">
+            <button onClick={handleSendMessage} disabled={!newMsg.trim()}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl text-white font-medium text-sm disabled:opacity-40"
+              style={{ background: "#F4720B" }}>
+              <Icon name="Send" size={14} />
+              Ответить
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Список тем ──
   return (
     <div className="animate-fade-in space-y-4">
-      <div>
-        <h1 className="text-2xl font-bold">Форум</h1>
-        <p className="text-muted-foreground mt-1">Обсуждение рабочих ситуаций</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold">Форум</h1>
+          <p className="text-muted-foreground mt-1">{topics.length} тем</p>
+        </div>
+        <button onClick={() => setShowNewTopic(true)}
+          className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-white font-medium text-sm"
+          style={{ background: "#F4720B" }}>
+          <Icon name="Plus" size={16} />
+          Новая тема
+        </button>
       </div>
 
-      <div className="space-y-4">
-        {posts.map(post => (
-          <div key={post.id} className="bg-white rounded-2xl p-5 border border-border/50">
-            <div className="flex items-start gap-3">
-              <div className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-sm shrink-0" style={{ background: "#1B2A4A" }}>
-                {post.avatar}
+      {showNewTopic && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.5)", backdropFilter: "blur(4px)" }}>
+          <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl animate-scale-in">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-lg font-bold text-foreground">Новая тема</h3>
+              <button onClick={() => setShowNewTopic(false)} className="w-8 h-8 rounded-lg flex items-center justify-center text-muted-foreground hover:bg-muted transition-colors">
+                <Icon name="X" size={16} />
+              </button>
+            </div>
+            <div className="space-y-4">
+              <div>
+                <label className="text-sm font-medium text-foreground mb-1.5 block">Название темы</label>
+                <input value={newTopicTitle} onChange={e => setNewTopicTitle(e.target.value)}
+                  placeholder="Например: Как работать с агрессивным клиентом?"
+                  className="w-full px-4 py-3 rounded-xl text-foreground text-[15px] outline-none"
+                  style={{ background: "#F8F9FB", border: "1.5px solid #E0E5EF" }} autoFocus />
               </div>
-              <div className="flex-1">
-                <div className="flex items-center gap-2 flex-wrap mb-2">
-                  <span className="font-semibold text-foreground">{post.author}</span>
-                  <span className="text-xs px-2 py-0.5 rounded-full font-medium"
-                    style={{ background: post.role === "Тренер" ? "#FFF3E8" : "#EEF1F7", color: post.role === "Тренер" ? "#F4720B" : "#1B2A4A" }}>
-                    {post.role}
-                  </span>
-                  <span className="text-xs text-muted-foreground ml-auto">{post.time}</span>
-                </div>
-                <p className="text-foreground leading-relaxed">{post.text}</p>
-                <button className="flex items-center gap-1.5 mt-3 text-sm text-muted-foreground hover:text-foreground transition-colors">
-                  <Icon name="Heart" size={14} />
-                  {post.likes}
+              <div>
+                <label className="text-sm font-medium text-foreground mb-1.5 block">Первое сообщение</label>
+                <textarea value={newTopicText} onChange={e => setNewTopicText(e.target.value)}
+                  placeholder="Опишите ситуацию или вопрос подробнее..."
+                  rows={4}
+                  className="w-full px-4 py-3 rounded-xl text-foreground text-[15px] outline-none resize-none"
+                  style={{ background: "#F8F9FB", border: "1.5px solid #E0E5EF" }} />
+              </div>
+              <div className="flex gap-3 pt-2">
+                <button onClick={() => setShowNewTopic(false)} className="flex-1 py-3 rounded-xl font-medium text-foreground" style={{ background: "#F0F3F8" }}>
+                  Отмена
+                </button>
+                <button onClick={handleCreateTopic} disabled={!newTopicTitle.trim() || !newTopicText.trim()}
+                  className="flex-1 py-3 rounded-xl font-medium text-white disabled:opacity-40"
+                  style={{ background: "#F4720B" }}>
+                  Создать
                 </button>
               </div>
             </div>
           </div>
-        ))}
-      </div>
-
-      <div className="bg-white rounded-2xl p-4 border border-border/50">
-        <textarea
-          value={newMsg}
-          onChange={e => setNewMsg(e.target.value)}
-          placeholder="Напишите сообщение или вопрос..."
-          rows={3}
-          className="w-full text-foreground text-[15px] resize-none outline-none bg-transparent placeholder-muted-foreground"
-        />
-        <div className="flex justify-end mt-2">
-          <button onClick={send} className="flex items-center gap-2 px-4 py-2 rounded-xl text-white font-medium text-sm" style={{ background: "#F4720B" }}>
-            <Icon name="Send" size={14} />
-            Отправить
-          </button>
         </div>
+      )}
+
+      <div className="space-y-3">
+        {topics.map(topic => (
+          <div key={topic.id} className="bg-white rounded-2xl p-5 border border-border/50 hover-lift cursor-pointer"
+            onClick={() => setSelectedTopic(topic)}>
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-sm shrink-0" style={{ background: "#1B2A4A" }}>
+                {topic.avatar}
+              </div>
+              <div className="flex-1 min-w-0">
+                <h3 className="font-semibold text-foreground leading-snug mb-1">{topic.title}</h3>
+                <div className="flex items-center gap-2 text-xs text-muted-foreground flex-wrap">
+                  <span className="font-medium" style={{ color: topic.role === "Тренер" ? "#F4720B" : "#1B2A4A" }}>{topic.author}</span>
+                  <span>·</span>
+                  <span>{topic.createdAt}</span>
+                </div>
+              </div>
+              <div className="flex items-center gap-1.5 text-sm text-muted-foreground shrink-0">
+                <Icon name="MessageSquare" size={14} />
+                {topic.posts.length}
+              </div>
+            </div>
+            <p className="text-sm text-muted-foreground mt-3 line-clamp-2 pl-13" style={{ paddingLeft: "52px" }}>
+              {topic.posts[0].text}
+            </p>
+          </div>
+        ))}
       </div>
     </div>
   );
