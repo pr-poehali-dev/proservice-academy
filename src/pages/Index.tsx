@@ -20,6 +20,27 @@ interface Lesson {
   duration: string;
   completed: boolean;
   hasHomework: boolean;
+  status: "draft" | "published";
+  content?: string;
+  homework?: string;
+  cheatsheet?: string;
+  order: number;
+}
+
+type CandidateStatus = "promising" | "watch" | "not_recommended";
+
+interface StudentMeta {
+  studentId: number;
+  candidateStatus?: CandidateStatus;
+  candidateComment?: string;
+  trainerNotes?: string;
+  studentNotes?: string;
+}
+
+interface HomeworkWithComment extends Homework {
+  trainerComment?: string;
+  studentNotes?: string;
+  draft?: string;
 }
 
 interface Course {
@@ -60,6 +81,7 @@ interface ForumTopic {
   createdAt: string;
   posts: ForumPost[];
   pinned?: boolean;
+  closed?: boolean;
 }
 
 interface StudentDoc {
@@ -99,11 +121,11 @@ const MOCK_COURSES: Course[] = [
     progress: 65,
     studentsCount: 8,
     lessons: [
-      { id: 1, title: "Роль мастера-приёмщика в автосервисе", duration: "45 мин", completed: true, hasHomework: true },
-      { id: 2, title: "Приём автомобиля: чек-лист осмотра", duration: "60 мин", completed: true, hasHomework: true },
-      { id: 3, title: "Работа с клиентскими возражениями", duration: "50 мин", completed: false, hasHomework: true },
-      { id: 4, title: "Оформление заказ-наряда", duration: "40 мин", completed: false, hasHomework: false },
-      { id: 5, title: "Выдача автомобиля и постпродажный сервис", duration: "35 мин", completed: false, hasHomework: true },
+      { id: 1, title: "Роль мастера-приёмщика в автосервисе", duration: "45 мин", completed: true, hasHomework: true, status: "published", order: 1, content: "Мастер-приёмщик — ключевая фигура автосервиса. Он первый контактирует с клиентом и формирует впечатление о всей компании.", homework: "Опишите 3 ситуации из своей практики, когда первое впечатление определило исход визита клиента.", cheatsheet: "Формула: улыбка + имя клиента + зрительный контакт = доверие с первых секунд." },
+      { id: 2, title: "Приём автомобиля: чек-лист осмотра", duration: "60 мин", completed: true, hasHomework: true, status: "published", order: 2, content: "Правильный приём автомобиля — основа прозрачности сервиса. Осмотр всегда проводится в присутствии клиента.", homework: "Проведите 3 приёма по чек-листу и опишите реакцию клиентов.", cheatsheet: "Ключ: фотографируй каждый дефект ДО начала работ. Это защита от претензий." },
+      { id: 3, title: "Работа с клиентскими возражениями", duration: "50 мин", completed: false, hasHomework: true, status: "published", order: 3, content: "Возражения клиента — это не отказ, а запрос на дополнительную информацию.", homework: "Запишите 5 возражений, которые вы слышали на этой неделе, и ваши ответы на них.", cheatsheet: "Метод ДДД: Да (согласие) → Детали (уточнение) → Доводы (аргументы)." },
+      { id: 4, title: "Оформление заказ-наряда", duration: "40 мин", completed: false, hasHomework: false, status: "published", order: 4, content: "Заказ-наряд — юридический документ. Каждая работа должна быть согласована с клиентом письменно.", cheatsheet: "Никогда не начинай работы без подписи клиента. Даже «срочные»." },
+      { id: 5, title: "Выдача автомобиля и постпродажный сервис", duration: "35 мин", completed: false, hasHomework: true, status: "draft", order: 5, content: "Выдача — последний шанс сформировать лояльного клиента. Объясни что сделано и почему.", homework: "Опишите идеальный сценарий выдачи автомобиля клиенту.", cheatsheet: "Правило: клиент уходит с пониманием что сделано, что запланировано и когда звонить." },
     ]
   },
   {
@@ -113,9 +135,9 @@ const MOCK_COURSES: Course[] = [
     progress: 20,
     studentsCount: 5,
     lessons: [
-      { id: 6, title: "Типология сложных клиентов", duration: "55 мин", completed: true, hasHomework: true },
-      { id: 7, title: "Страховые и гарантийные случаи", duration: "70 мин", completed: false, hasHomework: true },
-      { id: 8, title: "Технический минимум для приёмщика", duration: "80 мин", completed: false, hasHomework: false },
+      { id: 6, title: "Типология сложных клиентов", duration: "55 мин", completed: true, hasHomework: true, status: "published", order: 1, content: "Сложные клиенты делятся на типы: агрессивный, тревожный, недоверчивый, сверхтребовательный. У каждого — свой подход.", homework: "Опишите случай со сложным клиентом и как вы с ним справились.", cheatsheet: "Агрессивный: не спорь, дай выговориться. Тревожный: давай факты и цифры." },
+      { id: 7, title: "Страховые и гарантийные случаи", duration: "70 мин", completed: false, hasHomework: true, status: "published", order: 2, content: "Страховые случаи требуют строгого документального оформления и взаимодействия со страховщиком.", homework: "Изучите порядок оформления страхового случая в вашем сервисе.", cheatsheet: "Главное: фото→акт→согласование→работы. Ни шага без документа." },
+      { id: 8, title: "Технический минимум для приёмщика", duration: "80 мин", completed: false, hasHomework: false, status: "draft", order: 3, content: "Приёмщик не должен быть механиком, но обязан понимать основные узлы и системы автомобиля.", cheatsheet: "ТО-1/ТО-2, тормозная система, подвеска, масла — это минимум знаний для диалога с клиентом." },
     ]
   }
 ];
@@ -590,12 +612,22 @@ function CoursesView({ user }: { user: User }) {
   const [lessonTitle, setLessonTitle] = useState("");
   const [lessonDuration, setLessonDuration] = useState("");
   const [lessonHasHomework, setLessonHasHomework] = useState(false);
+  const [lessonContent, setLessonContent] = useState("");
+  const [lessonHomework, setLessonHomework] = useState("");
+  const [lessonCheatsheet, setLessonCheatsheet] = useState("");
+  const [lessonStatus, setLessonStatus] = useState<"draft" | "published">("published");
+  const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
+  const [viewingLesson, setViewingLesson] = useState<Lesson | null>(null);
 
   const openEditLesson = (lesson: Lesson) => {
     setEditingLesson(lesson);
     setLessonTitle(lesson.title);
     setLessonDuration(lesson.duration);
     setLessonHasHomework(lesson.hasHomework);
+    setLessonContent(lesson.content || "");
+    setLessonHomework(lesson.homework || "");
+    setLessonCheatsheet(lesson.cheatsheet || "");
+    setLessonStatus(lesson.status || "published");
   };
 
   const handleEditLesson = () => {
@@ -603,13 +635,32 @@ function CoursesView({ user }: { user: User }) {
     const updated = {
       ...selectedCourse,
       lessons: selectedCourse.lessons.map(l =>
-        l.id === editingLesson.id ? { ...l, title: lessonTitle, duration: lessonDuration || "30 мин", hasHomework: lessonHasHomework } : l
+        l.id === editingLesson.id ? { ...l, title: lessonTitle, duration: lessonDuration || "30 мин", hasHomework: lessonHasHomework, content: lessonContent, homework: lessonHomework, cheatsheet: lessonCheatsheet, status: lessonStatus } : l
       ),
     };
     setCourses(prev => prev.map(c => c.id === selectedCourse.id ? updated : c));
     setSelectedCourse(updated);
     setEditingLesson(null);
     setLessonTitle(""); setLessonDuration(""); setLessonHasHomework(false);
+    setLessonContent(""); setLessonHomework(""); setLessonCheatsheet("");
+  };
+
+  const handleToggleLessonStatus = (lessonId: number) => {
+    if (!selectedCourse) return;
+    const updated = { ...selectedCourse, lessons: selectedCourse.lessons.map(l => l.id === lessonId ? { ...l, status: l.status === "published" ? "draft" as const : "published" as const } : l) };
+    setCourses(prev => prev.map(c => c.id === selectedCourse.id ? updated : c));
+    setSelectedCourse(updated);
+  };
+
+  const handleDragLesson = (fromIdx: number, toIdx: number) => {
+    if (!selectedCourse || fromIdx === toIdx) return;
+    const lessons = [...selectedCourse.lessons];
+    const [moved] = lessons.splice(fromIdx, 1);
+    lessons.splice(toIdx, 0, moved);
+    const reordered = lessons.map((l, i) => ({ ...l, order: i + 1 }));
+    const updated = { ...selectedCourse, lessons: reordered };
+    setCourses(prev => prev.map(c => c.id === selectedCourse.id ? updated : c));
+    setSelectedCourse(updated);
   };
 
   const handleDeleteLesson = (lessonId: number) => {
@@ -643,13 +694,17 @@ function CoursesView({ user }: { user: User }) {
       duration: lessonDuration || "30 мин",
       completed: false,
       hasHomework: lessonHasHomework,
+      status: lessonStatus,
+      order: selectedCourse.lessons.length + 1,
+      content: lessonContent,
+      homework: lessonHomework,
+      cheatsheet: lessonCheatsheet,
     };
     const updated = { ...selectedCourse, lessons: [...selectedCourse.lessons, newLesson] };
     setCourses(prev => prev.map(c => c.id === selectedCourse.id ? updated : c));
     setSelectedCourse(updated);
-    setLessonTitle("");
-    setLessonDuration("");
-    setLessonHasHomework(false);
+    setLessonTitle(""); setLessonDuration(""); setLessonHasHomework(false);
+    setLessonContent(""); setLessonHomework(""); setLessonCheatsheet("");
     setShowAddLesson(false);
   };
 
@@ -727,22 +782,97 @@ function CoursesView({ user }: { user: User }) {
           )}
         </div>
 
-        <div className="space-y-3">
-          {selectedCourse.lessons.map((lesson, idx) => (
-            <div key={lesson.id} className="bg-white rounded-2xl p-5 border border-border/50 flex items-center gap-4">
-              <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 font-bold text-sm"
-                style={{ background: lesson.completed ? "#F4720B" : "#F0F2F5", color: lesson.completed ? "white" : "#9CA3AF" }}>
-                {lesson.completed ? <Icon name="Check" size={16} className="text-white" /> : idx + 1}
+        {/* Просмотр урока */}
+        {viewingLesson && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.6)", backdropFilter: "blur(4px)" }}>
+            <div className="bg-white rounded-2xl w-full max-w-2xl shadow-2xl animate-scale-in overflow-hidden max-h-[90vh] flex flex-col">
+              <div className="flex items-center justify-between p-6 border-b border-border/50">
+                <div>
+                  <h2 className="text-lg font-bold text-foreground">{viewingLesson.title}</h2>
+                  <div className="text-xs text-muted-foreground mt-0.5 flex items-center gap-2">
+                    <Icon name="Clock" size={11} />{viewingLesson.duration}
+                    {viewingLesson.hasHomework && <><span>·</span><Icon name="FileText" size={11} />Есть Д/З</>}
+                  </div>
+                </div>
+                <button onClick={() => setViewingLesson(null)} className="w-8 h-8 rounded-lg flex items-center justify-center text-muted-foreground hover:bg-muted">
+                  <Icon name="X" size={16} />
+                </button>
               </div>
-              <div className="flex-1 min-w-0">
-                <div className="font-semibold text-foreground">{lesson.title}</div>
+              <div className="overflow-y-auto p-6 space-y-5 no-copy" onContextMenu={e => e.preventDefault()}>
+                {viewingLesson.content && (
+                  <div>
+                    <div className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wide">Содержание урока</div>
+                    <div className="text-foreground leading-relaxed whitespace-pre-wrap">{viewingLesson.content}</div>
+                  </div>
+                )}
+                {viewingLesson.hasHomework && viewingLesson.homework && (
+                  <div className="p-4 rounded-xl" style={{ background: "#FFF3E8", border: "1.5px solid #FDDCB5" }}>
+                    <div className="text-xs font-semibold mb-2 flex items-center gap-1.5" style={{ color: "#F4720B" }}>
+                      <Icon name="FileText" size={12} />Домашнее задание
+                    </div>
+                    <div className="text-foreground leading-relaxed text-sm whitespace-pre-wrap">{viewingLesson.homework}</div>
+                  </div>
+                )}
+                {viewingLesson.cheatsheet && (viewingLesson.completed || user.role === "trainer") && (
+                  <div className="p-4 rounded-xl" style={{ background: "#ECFDF5", border: "1.5px solid #A7F3D0" }}>
+                    <div className="text-xs font-semibold mb-2 flex items-center gap-1.5" style={{ color: "#059669" }}>
+                      <Icon name="Lightbulb" size={12} />Шпаргалка {user.role !== "trainer" && "(доступна после прохождения)"}
+                    </div>
+                    <div className="text-foreground leading-relaxed text-sm whitespace-pre-wrap">{viewingLesson.cheatsheet}</div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        <div className="space-y-2">
+          {selectedCourse.lessons
+            .filter(l => user.role === "trainer" || l.status === "published")
+            .map((lesson, idx) => (
+            <div key={lesson.id}
+              draggable={user.role === "trainer"}
+              onDragStart={e => e.dataTransfer.setData("idx", String(idx))}
+              onDragOver={e => { e.preventDefault(); setDragOverIdx(idx); }}
+              onDragLeave={() => setDragOverIdx(null)}
+              onDrop={e => { e.preventDefault(); handleDragLesson(Number(e.dataTransfer.getData("idx")), idx); setDragOverIdx(null); }}
+              className="bg-white rounded-2xl p-4 border flex items-center gap-3 transition-all"
+              style={{ borderColor: dragOverIdx === idx ? "#F4720B" : "rgba(0,0,0,0.07)", opacity: lesson.status === "draft" ? 0.75 : 1 }}>
+
+              {user.role === "trainer" && (
+                <div className="text-muted-foreground cursor-grab shrink-0" title="Перетащить">
+                  <Icon name="GripVertical" size={16} />
+                </div>
+              )}
+
+              <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 font-bold text-sm"
+                style={{ background: lesson.completed ? "#F4720B" : "#F0F2F5", color: lesson.completed ? "white" : "#9CA3AF" }}>
+                {lesson.completed ? <Icon name="Check" size={15} className="text-white" /> : idx + 1}
+              </div>
+
+              <div className="flex-1 min-w-0 cursor-pointer" onClick={() => setViewingLesson(lesson)}>
+                <div className="font-semibold text-foreground flex items-center gap-2">
+                  {lesson.title}
+                  {user.role === "trainer" && (
+                    <span className="text-xs px-1.5 py-0.5 rounded font-medium"
+                      style={{ background: lesson.status === "published" ? "#ECFDF5" : "#F3F4F6", color: lesson.status === "published" ? "#059669" : "#6B7280" }}>
+                      {lesson.status === "published" ? "Опубликован" : "Черновик"}
+                    </span>
+                  )}
+                </div>
                 <div className="text-sm text-muted-foreground flex items-center gap-3 mt-0.5">
-                  <span className="flex items-center gap-1"><Icon name="Clock" size={12} />{lesson.duration}</span>
-                  {lesson.hasHomework && <span className="flex items-center gap-1"><Icon name="FileText" size={12} />Д/З</span>}
+                  <span className="flex items-center gap-1"><Icon name="Clock" size={11} />{lesson.duration}</span>
+                  {lesson.hasHomework && <span className="flex items-center gap-1"><Icon name="FileText" size={11} />Д/З</span>}
                 </div>
               </div>
+
               {user.role === "trainer" ? (
                 <div className="flex items-center gap-1 shrink-0">
+                  <button onClick={() => handleToggleLessonStatus(lesson.id)}
+                    className="w-8 h-8 rounded-lg flex items-center justify-center transition-all text-muted-foreground hover:bg-muted"
+                    title={lesson.status === "published" ? "Скрыть (в черновик)" : "Опубликовать"}>
+                    <Icon name={lesson.status === "published" ? "EyeOff" : "Eye"} size={14} />
+                  </button>
                   <button onClick={() => openEditLesson(lesson)}
                     className="w-8 h-8 rounded-lg flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted transition-all">
                     <Icon name="Pencil" size={14} />
@@ -765,45 +895,82 @@ function CoursesView({ user }: { user: User }) {
 
         {editingLesson && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.5)", backdropFilter: "blur(4px)" }}>
-            <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl animate-scale-in">
-              <div className="flex items-center justify-between mb-6">
+            <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl animate-scale-in overflow-hidden max-h-[90vh] flex flex-col">
+              <div className="flex items-center justify-between p-6 border-b border-border/50">
                 <h3 className="text-lg font-bold text-foreground">Редактировать урок</h3>
                 <button onClick={() => setEditingLesson(null)} className="w-8 h-8 rounded-lg flex items-center justify-center text-muted-foreground hover:bg-muted transition-colors">
                   <Icon name="X" size={16} />
                 </button>
               </div>
-              <div className="space-y-4">
-                <div>
-                  <label className="text-sm font-medium text-foreground mb-1.5 block">Название урока</label>
-                  <input value={lessonTitle} onChange={e => setLessonTitle(e.target.value)}
-                    className="w-full px-4 py-3 rounded-xl text-foreground text-[15px] outline-none"
-                    style={{ background: "#F8F9FB", border: "1.5px solid #E0E5EF" }} autoFocus />
+              <div className="overflow-y-auto p-6 space-y-4">
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-sm font-medium text-foreground mb-1.5 block">Название урока</label>
+                    <input value={lessonTitle} onChange={e => setLessonTitle(e.target.value)}
+                      className="w-full px-3 py-2.5 rounded-xl text-foreground text-[15px] outline-none"
+                      style={{ background: "#F8F9FB", border: "1.5px solid #E0E5EF" }} autoFocus />
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium text-foreground mb-1.5 block">Продолжительность</label>
+                    <input value={lessonDuration} onChange={e => setLessonDuration(e.target.value)} placeholder="45 мин"
+                      className="w-full px-3 py-2.5 rounded-xl text-foreground text-[15px] outline-none"
+                      style={{ background: "#F8F9FB", border: "1.5px solid #E0E5EF" }} />
+                  </div>
+                </div>
+                <div className="flex gap-3">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <div onClick={() => setLessonHasHomework(v => !v)}
+                      className="w-5 h-5 rounded flex items-center justify-center transition-all shrink-0"
+                      style={{ background: lessonHasHomework ? "#F4720B" : "#E0E5EF" }}>
+                      {lessonHasHomework && <Icon name="Check" size={12} className="text-white" />}
+                    </div>
+                    <span className="text-sm font-medium text-foreground">Есть Д/З</span>
+                  </label>
+                  <div className="flex gap-2 ml-auto">
+                    {(["draft", "published"] as const).map(s => (
+                      <button key={s} onClick={() => setLessonStatus(s)}
+                        className="text-xs px-3 py-1.5 rounded-lg font-medium transition-all"
+                        style={{ background: lessonStatus === s ? (s === "published" ? "#ECFDF5" : "#F3F4F6") : "#F0F3F8", color: lessonStatus === s ? (s === "published" ? "#059669" : "#374151") : "#9CA3AF" }}>
+                        {s === "published" ? "Опубликован" : "Черновик"}
+                      </button>
+                    ))}
+                  </div>
                 </div>
                 <div>
-                  <label className="text-sm font-medium text-foreground mb-1.5 block">Продолжительность</label>
-                  <input value={lessonDuration} onChange={e => setLessonDuration(e.target.value)}
-                    placeholder="Например: 45 мин"
-                    className="w-full px-4 py-3 rounded-xl text-foreground text-[15px] outline-none"
+                  <label className="text-sm font-medium text-foreground mb-1.5 block flex items-center gap-1.5">
+                    <Icon name="BookOpen" size={13} />Основной контент урока
+                  </label>
+                  <textarea value={lessonContent} onChange={e => setLessonContent(e.target.value)}
+                    placeholder="Текст урока, объяснения, примеры..."
+                    rows={4} className="w-full px-3 py-2.5 rounded-xl text-foreground text-sm outline-none resize-none"
                     style={{ background: "#F8F9FB", border: "1.5px solid #E0E5EF" }} />
                 </div>
-                <label className="flex items-center gap-3 cursor-pointer p-3 rounded-xl hover:bg-muted/50 transition-colors">
-                  <div onClick={() => setLessonHasHomework(v => !v)}
-                    className="w-5 h-5 rounded flex items-center justify-center transition-all shrink-0"
-                    style={{ background: lessonHasHomework ? "#F4720B" : "#E0E5EF" }}>
-                    {lessonHasHomework && <Icon name="Check" size={12} className="text-white" />}
+                {lessonHasHomework && (
+                  <div>
+                    <label className="text-sm font-medium text-foreground mb-1.5 block flex items-center gap-1.5">
+                      <Icon name="FileText" size={13} style={{ color: "#F4720B" }} />Домашнее задание
+                    </label>
+                    <textarea value={lessonHomework} onChange={e => setLessonHomework(e.target.value)}
+                      placeholder="Задание для самостоятельного выполнения..."
+                      rows={3} className="w-full px-3 py-2.5 rounded-xl text-foreground text-sm outline-none resize-none"
+                      style={{ background: "#FFF3E8", border: "1.5px solid #FDDCB5" }} />
                   </div>
-                  <span className="text-sm font-medium text-foreground">Есть домашнее задание</span>
-                </label>
-                <div className="flex gap-3 pt-2">
-                  <button onClick={() => setEditingLesson(null)} className="flex-1 py-3 rounded-xl font-medium text-foreground" style={{ background: "#F0F3F8" }}>
-                    Отмена
-                  </button>
-                  <button onClick={handleEditLesson} disabled={!lessonTitle.trim()}
-                    className="flex-1 py-3 rounded-xl font-medium text-white disabled:opacity-40"
-                    style={{ background: "#F4720B" }}>
-                    Сохранить
-                  </button>
+                )}
+                <div>
+                  <label className="text-sm font-medium text-foreground mb-1.5 block flex items-center gap-1.5">
+                    <Icon name="Lightbulb" size={13} style={{ color: "#059669" }} />Шпаргалка
+                    <span className="text-xs font-normal text-muted-foreground">(видна после прохождения)</span>
+                  </label>
+                  <textarea value={lessonCheatsheet} onChange={e => setLessonCheatsheet(e.target.value)}
+                    placeholder="Ключевые тезисы, формулы, подсказки..."
+                    rows={3} className="w-full px-3 py-2.5 rounded-xl text-foreground text-sm outline-none resize-none"
+                    style={{ background: "#ECFDF5", border: "1.5px solid #A7F3D0" }} />
                 </div>
+              </div>
+              <div className="flex gap-3 p-6 border-t border-border/50">
+                <button onClick={() => setEditingLesson(null)} className="flex-1 py-3 rounded-xl font-medium text-foreground" style={{ background: "#F0F3F8" }}>Отмена</button>
+                <button onClick={handleEditLesson} disabled={!lessonTitle.trim()}
+                  className="flex-1 py-3 rounded-xl font-medium text-white disabled:opacity-40" style={{ background: "#F4720B" }}>Сохранить</button>
               </div>
             </div>
           </div>
@@ -818,53 +985,72 @@ function CoursesView({ user }: { user: User }) {
 
         {showAddLesson && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.5)", backdropFilter: "blur(4px)" }}>
-            <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl animate-scale-in">
-              <div className="flex items-center justify-between mb-6">
+            <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl animate-scale-in overflow-hidden max-h-[90vh] flex flex-col">
+              <div className="flex items-center justify-between p-6 border-b border-border/50">
                 <h3 className="text-lg font-bold text-foreground">Новый урок</h3>
-                <button onClick={() => setShowAddLesson(false)} className="w-8 h-8 rounded-lg flex items-center justify-center text-muted-foreground hover:bg-muted transition-colors">
+                <button onClick={() => setShowAddLesson(false)} className="w-8 h-8 rounded-lg flex items-center justify-center text-muted-foreground hover:bg-muted">
                   <Icon name="X" size={16} />
                 </button>
               </div>
-              <div className="space-y-4">
-                <div>
-                  <label className="text-sm font-medium text-foreground mb-1.5 block">Название урока</label>
-                  <input
-                    value={lessonTitle}
-                    onChange={e => setLessonTitle(e.target.value)}
-                    placeholder="Например: Приём автомобиля по чек-листу"
-                    className="w-full px-4 py-3 rounded-xl text-foreground text-[15px] outline-none"
-                    style={{ background: "#F8F9FB", border: "1.5px solid #E0E5EF" }}
-                    autoFocus
-                  />
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-foreground mb-1.5 block">Продолжительность</label>
-                  <input
-                    value={lessonDuration}
-                    onChange={e => setLessonDuration(e.target.value)}
-                    placeholder="Например: 45 мин"
-                    className="w-full px-4 py-3 rounded-xl text-foreground text-[15px] outline-none"
-                    style={{ background: "#F8F9FB", border: "1.5px solid #E0E5EF" }}
-                  />
-                </div>
-                <label className="flex items-center gap-3 cursor-pointer p-3 rounded-xl transition-colors hover:bg-muted/50">
-                  <div onClick={() => setLessonHasHomework(v => !v)}
-                    className="w-5 h-5 rounded flex items-center justify-center transition-all shrink-0"
-                    style={{ background: lessonHasHomework ? "#F4720B" : "#E0E5EF" }}>
-                    {lessonHasHomework && <Icon name="Check" size={12} className="text-white" />}
+              <div className="overflow-y-auto p-6 space-y-4">
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-sm font-medium text-foreground mb-1.5 block">Название урока</label>
+                    <input value={lessonTitle} onChange={e => setLessonTitle(e.target.value)} placeholder="Название..."
+                      className="w-full px-3 py-2.5 rounded-xl text-foreground text-[15px] outline-none"
+                      style={{ background: "#F8F9FB", border: "1.5px solid #E0E5EF" }} autoFocus />
                   </div>
-                  <span className="text-sm font-medium text-foreground">Есть домашнее задание</span>
-                </label>
-                <div className="flex gap-3 pt-2">
-                  <button onClick={() => setShowAddLesson(false)} className="flex-1 py-3 rounded-xl font-medium text-foreground" style={{ background: "#F0F3F8" }}>
-                    Отмена
-                  </button>
-                  <button onClick={handleAddLesson} disabled={!lessonTitle.trim()}
-                    className="flex-1 py-3 rounded-xl font-medium text-white transition-all disabled:opacity-40"
-                    style={{ background: "#F4720B" }}>
-                    Добавить
-                  </button>
+                  <div>
+                    <label className="text-sm font-medium text-foreground mb-1.5 block">Продолжительность</label>
+                    <input value={lessonDuration} onChange={e => setLessonDuration(e.target.value)} placeholder="45 мин"
+                      className="w-full px-3 py-2.5 rounded-xl text-foreground text-[15px] outline-none"
+                      style={{ background: "#F8F9FB", border: "1.5px solid #E0E5EF" }} />
+                  </div>
                 </div>
+                <div className="flex gap-3 items-center">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <div onClick={() => setLessonHasHomework(v => !v)}
+                      className="w-5 h-5 rounded flex items-center justify-center transition-all shrink-0"
+                      style={{ background: lessonHasHomework ? "#F4720B" : "#E0E5EF" }}>
+                      {lessonHasHomework && <Icon name="Check" size={12} className="text-white" />}
+                    </div>
+                    <span className="text-sm font-medium text-foreground">Есть Д/З</span>
+                  </label>
+                  <div className="flex gap-2 ml-auto">
+                    {(["draft", "published"] as const).map(s => (
+                      <button key={s} onClick={() => setLessonStatus(s)}
+                        className="text-xs px-3 py-1.5 rounded-lg font-medium transition-all"
+                        style={{ background: lessonStatus === s ? (s === "published" ? "#ECFDF5" : "#F3F4F6") : "#F0F3F8", color: lessonStatus === s ? (s === "published" ? "#059669" : "#374151") : "#9CA3AF" }}>
+                        {s === "published" ? "Опубликован" : "Черновик"}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-foreground mb-1.5 block"><Icon name="BookOpen" size={13} className="inline mr-1" />Основной контент</label>
+                  <textarea value={lessonContent} onChange={e => setLessonContent(e.target.value)} placeholder="Текст урока..."
+                    rows={4} className="w-full px-3 py-2.5 rounded-xl text-foreground text-sm outline-none resize-none"
+                    style={{ background: "#F8F9FB", border: "1.5px solid #E0E5EF" }} />
+                </div>
+                {lessonHasHomework && (
+                  <div>
+                    <label className="text-sm font-medium text-foreground mb-1.5 block" style={{ color: "#F4720B" }}><Icon name="FileText" size={13} className="inline mr-1" />Домашнее задание</label>
+                    <textarea value={lessonHomework} onChange={e => setLessonHomework(e.target.value)} placeholder="Задание..."
+                      rows={3} className="w-full px-3 py-2.5 rounded-xl text-foreground text-sm outline-none resize-none"
+                      style={{ background: "#FFF3E8", border: "1.5px solid #FDDCB5" }} />
+                  </div>
+                )}
+                <div>
+                  <label className="text-sm font-medium text-foreground mb-1.5 block" style={{ color: "#059669" }}><Icon name="Lightbulb" size={13} className="inline mr-1" />Шпаргалка</label>
+                  <textarea value={lessonCheatsheet} onChange={e => setLessonCheatsheet(e.target.value)} placeholder="Ключевые тезисы..."
+                    rows={3} className="w-full px-3 py-2.5 rounded-xl text-foreground text-sm outline-none resize-none"
+                    style={{ background: "#ECFDF5", border: "1.5px solid #A7F3D0" }} />
+                </div>
+              </div>
+              <div className="flex gap-3 p-6 border-t border-border/50">
+                <button onClick={() => setShowAddLesson(false)} className="flex-1 py-3 rounded-xl font-medium text-foreground" style={{ background: "#F0F3F8" }}>Отмена</button>
+                <button onClick={handleAddLesson} disabled={!lessonTitle.trim()}
+                  className="flex-1 py-3 rounded-xl font-medium text-white disabled:opacity-40" style={{ background: "#F4720B" }}>Добавить</button>
               </div>
             </div>
           </div>
@@ -970,43 +1156,51 @@ function CoursesView({ user }: { user: User }) {
 
 // ─── Homeworks View ────────────────────────────────────────────────────────────
 function HomeworksView({ user, onNotify }: { user: User; onNotify?: (n: Omit<Notification, "id" | "createdAt" | "read">) => void }) {
-  const [homeworks, setHomeworks] = useState<Homework[]>(MOCK_HOMEWORKS);
-  const [selected, setSelected] = useState<Homework | null>(null);
+  const [homeworks, setHomeworks] = useState<HomeworkWithComment[]>(MOCK_HOMEWORKS as HomeworkWithComment[]);
+  const [selected, setSelected] = useState<HomeworkWithComment | null>(null);
   const [gradeInput, setGradeInput] = useState("");
+  const [trainerComment, setTrainerComment] = useState("");
+  // student submit
+  const [showSubmit, setShowSubmit] = useState(false);
+  const [submitLesson, setSubmitLesson] = useState("");
+  const [submitText, setSubmitText] = useState(() => localStorage.getItem("hw_draft") || "");
+  const [studentNotes, setStudentNotes] = useState<Record<string, string>>({});
 
-  const getStudentEmail = (name: string) => {
-    const found = MOCK_USERS.find(u => u.name === name);
-    return found?.email ?? "";
-  };
+  const getStudentEmail = (name: string) => MOCK_USERS.find(u => u.name === name)?.email ?? "";
 
   const handleAccept = () => {
     if (!selected || !gradeInput) return;
     const updated = homeworks.map(hw =>
-      hw.id === selected.id ? { ...hw, status: "checked" as const, grade: Number(gradeInput) } : hw
+      hw.id === selected.id ? { ...hw, status: "checked" as const, grade: Number(gradeInput), trainerComment } : hw
     );
     setHomeworks(updated);
     onNotify?.({ studentEmail: getStudentEmail(selected.studentName), lessonTitle: selected.lessonTitle, status: "checked", grade: Number(gradeInput) });
-    setSelected(null);
-    setGradeInput("");
+    setSelected(null); setGradeInput(""); setTrainerComment("");
   };
 
   const handleRevision = () => {
     if (!selected) return;
     const updated = homeworks.map(hw =>
-      hw.id === selected.id ? { ...hw, status: "revision" as const } : hw
+      hw.id === selected.id ? { ...hw, status: "revision" as const, trainerComment } : hw
     );
     setHomeworks(updated);
     onNotify?.({ studentEmail: getStudentEmail(selected.studentName), lessonTitle: selected.lessonTitle, status: "revision" });
-    setSelected(null);
-    setGradeInput("");
+    setSelected(null); setGradeInput(""); setTrainerComment("");
+  };
+
+  const handleSubmitHw = () => {
+    if (!submitLesson.trim() || !submitText.trim()) return;
+    const hw: HomeworkWithComment = { id: Date.now(), studentName: user.name, lessonTitle: submitLesson, submittedAt: "только что", status: "pending", text: submitText };
+    setHomeworks(prev => [hw, ...prev]);
+    localStorage.removeItem("hw_draft");
+    setSubmitText(""); setSubmitLesson(""); setShowSubmit(false);
   };
 
   if (selected && user.role === "trainer") {
     return (
       <div className="animate-fade-in space-y-6">
-        <button onClick={() => setSelected(null)} className="flex items-center gap-2 text-muted-foreground hover:text-foreground text-sm font-medium">
-          <Icon name="ArrowLeft" size={16} />
-          Назад
+        <button onClick={() => { setSelected(null); setTrainerComment(""); }} className="flex items-center gap-2 text-muted-foreground hover:text-foreground text-sm font-medium">
+          <Icon name="ArrowLeft" size={16} />Назад
         </button>
         <div className="bg-white rounded-2xl p-6 border border-border/50">
           <div className="flex items-center gap-3 mb-4">
@@ -1018,9 +1212,15 @@ function HomeworksView({ user, onNotify }: { user: User; onNotify?: (n: Omit<Not
               <div className="text-sm text-muted-foreground">{selected.lessonTitle} · {selected.submittedAt}</div>
             </div>
           </div>
-          <div className="p-4 rounded-xl text-foreground leading-relaxed no-copy" style={{ background: "#F8F9FB", border: "1px solid #EEF1F7" }}>
+          <div className="p-4 rounded-xl text-foreground leading-relaxed no-copy mb-4" style={{ background: "#F8F9FB", border: "1px solid #EEF1F7" }}>
             {selected.text}
           </div>
+          {selected.studentNotes && (
+            <div className="p-3 rounded-xl" style={{ background: "#EEF1F7" }}>
+              <div className="text-xs font-semibold text-muted-foreground mb-1">Заметки ученика по уроку</div>
+              <div className="text-sm text-foreground">{selected.studentNotes}</div>
+            </div>
+          )}
         </div>
         <div className="bg-white rounded-2xl p-6 border border-border/50">
           <h3 className="font-bold mb-4">Оценить работу</h3>
@@ -1033,15 +1233,19 @@ function HomeworksView({ user, onNotify }: { user: User; onNotify?: (n: Omit<Not
               </button>
             ))}
           </div>
+          <div className="mb-4">
+            <label className="text-sm font-medium text-foreground mb-1.5 block">Комментарий тренера</label>
+            <textarea value={trainerComment} onChange={e => setTrainerComment(e.target.value)}
+              placeholder="Напишите обратную связь ученику..."
+              rows={3} className="w-full px-4 py-3 rounded-xl text-foreground text-sm outline-none resize-none"
+              style={{ background: "#F8F9FB", border: "1.5px solid #E0E5EF" }} />
+          </div>
           <div className="flex gap-3">
             <button onClick={handleAccept} disabled={!gradeInput}
-              className="flex-1 py-3 rounded-xl font-medium text-white transition-all disabled:opacity-40"
-              style={{ background: "#F4720B" }}>
+              className="flex-1 py-3 rounded-xl font-medium text-white transition-all disabled:opacity-40" style={{ background: "#F4720B" }}>
               {gradeInput ? `Принять (оценка ${gradeInput})` : "Выберите оценку"}
             </button>
-            <button onClick={handleRevision}
-              className="px-4 py-3 rounded-xl font-medium transition-all hover:opacity-80"
-              style={{ background: "#FEF2F2", color: "#DC2626" }}>
+            <button onClick={handleRevision} className="px-4 py-3 rounded-xl font-medium" style={{ background: "#FEF2F2", color: "#DC2626" }}>
               На доработку
             </button>
           </div>
@@ -1057,8 +1261,25 @@ function HomeworksView({ user, onNotify }: { user: User; onNotify?: (n: Omit<Not
           <h1 className="text-2xl font-bold">Мои задания</h1>
           <p className="text-muted-foreground mt-1">Домашние работы и статус проверки</p>
         </div>
+
+        {/* Блокнот ученика */}
+        <div className="bg-white rounded-2xl p-5 border border-border/50">
+          <h3 className="font-bold text-foreground mb-3 flex items-center gap-2">
+            <Icon name="StickyNote" size={16} style={{ color: "#F4720B" }} />
+            Мои заметки и рассуждения по урокам
+          </h3>
+          <textarea
+            value={studentNotes["general"] || ""}
+            onChange={e => setStudentNotes(prev => ({ ...prev, general: e.target.value }))}
+            placeholder="Личный блокнот — записывайте мысли, выводы, вопросы по урокам. Сохраняется автоматически."
+            rows={4}
+            className="w-full text-foreground text-[15px] resize-none outline-none bg-transparent placeholder-muted-foreground"
+          />
+          <div className="text-xs text-muted-foreground mt-2">Сохранено автоматически</div>
+        </div>
+
         <div className="space-y-3">
-          {MOCK_HOMEWORKS.slice(0, 2).map(hw => (
+          {homeworks.filter(hw => hw.studentName === user.name || user.name.includes("Мастеров")).map(hw => (
             <div key={hw.id} className="bg-white rounded-2xl p-5 border border-border/50">
               <div className="flex items-start justify-between mb-2">
                 <div className="font-semibold text-foreground">{hw.lessonTitle}</div>
@@ -1069,15 +1290,51 @@ function HomeworksView({ user, onNotify }: { user: User; onNotify?: (n: Omit<Not
                   {hw.status === "pending" ? "На проверке" : hw.status === "checked" ? `Оценка: ${hw.grade}` : "На доработку"}
                 </span>
               </div>
-              <p className="text-sm text-muted-foreground">{hw.text.slice(0, 100)}...</p>
+              <p className="text-sm text-muted-foreground mb-2">{hw.text.slice(0, 100)}...</p>
+              {hw.status === "checked" && hw.trainerComment && (
+                <div className="p-3 rounded-xl text-sm" style={{ background: "#ECFDF5", border: "1px solid #A7F3D0" }}>
+                  <div className="text-xs font-semibold mb-1" style={{ color: "#059669" }}>Комментарий тренера</div>
+                  <div className="text-foreground">{hw.trainerComment}</div>
+                </div>
+              )}
+              {hw.status === "revision" && hw.trainerComment && (
+                <div className="p-3 rounded-xl text-sm" style={{ background: "#FEF2F2", border: "1px solid #FECACA" }}>
+                  <div className="text-xs font-semibold mb-1" style={{ color: "#DC2626" }}>Комментарий тренера</div>
+                  <div className="text-foreground">{hw.trainerComment}</div>
+                </div>
+              )}
               <div className="text-xs text-muted-foreground mt-2">{hw.submittedAt}</div>
             </div>
           ))}
         </div>
-        <button className="flex items-center gap-2 w-full justify-center py-4 rounded-2xl font-medium text-white" style={{ background: "#F4720B" }}>
-          <Icon name="Plus" size={18} />
-          Сдать новое задание
-        </button>
+
+        {/* Черновик нового задания */}
+        {showSubmit ? (
+          <div className="bg-white rounded-2xl p-5 border-2 border-border/50 space-y-4" style={{ borderColor: "#F4720B" }}>
+            <h3 className="font-bold text-foreground">Новое задание</h3>
+            <input value={submitLesson} onChange={e => setSubmitLesson(e.target.value)}
+              placeholder="Название урока..." className="w-full px-4 py-3 rounded-xl text-foreground text-[15px] outline-none"
+              style={{ background: "#F8F9FB", border: "1.5px solid #E0E5EF" }} autoFocus />
+            <div>
+              <textarea value={submitText}
+                onChange={e => { setSubmitText(e.target.value); localStorage.setItem("hw_draft", e.target.value); }}
+                placeholder="Опишите выполненное задание..."
+                rows={5} className="w-full px-4 py-3 rounded-xl text-foreground text-[15px] outline-none resize-none"
+                style={{ background: "#F8F9FB", border: "1.5px solid #E0E5EF" }} />
+              <div className="text-xs text-muted-foreground mt-1">Черновик сохранён автоматически</div>
+            </div>
+            <div className="flex gap-3">
+              <button onClick={() => setShowSubmit(false)} className="flex-1 py-3 rounded-xl font-medium text-foreground" style={{ background: "#F0F3F8" }}>Отмена</button>
+              <button onClick={handleSubmitHw} disabled={!submitLesson.trim() || !submitText.trim()}
+                className="flex-1 py-3 rounded-xl font-medium text-white disabled:opacity-40" style={{ background: "#F4720B" }}>Отправить</button>
+            </div>
+          </div>
+        ) : (
+          <button onClick={() => setShowSubmit(true)} className="flex items-center gap-2 w-full justify-center py-4 rounded-2xl font-medium text-white" style={{ background: "#F4720B" }}>
+            <Icon name="Plus" size={18} />
+            Сдать задание
+          </button>
+        )}
       </div>
     );
   }
@@ -1122,6 +1379,9 @@ function StudentsView() {
   const [newName, setNewName] = useState("");
   const [newEmail, setNewEmail] = useState("");
   const [confirmDelete, setConfirmDelete] = useState<number | null>(null);
+  const [generatedPassword, setGeneratedPassword] = useState<string | null>(null);
+  const [studentMeta, setStudentMeta] = useState<Record<number, StudentMeta>>({});
+  const [expandedStudent, setExpandedStudent] = useState<number | null>(null);
   const [docs, setDocs] = useState<Record<number, StudentDoc[]>>({});
   const [expandedDocs, setExpandedDocs] = useState<number | null>(null);
   const [uploadModal, setUploadModal] = useState<number | null>(null);
@@ -1174,15 +1434,50 @@ function StudentsView() {
     a.href = doc.dataUrl; a.download = doc.name; a.click();
   };
 
+  const generatePassword = () => {
+    const chars = "ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789";
+    return Array.from({ length: 8 }, () => chars[Math.floor(Math.random() * chars.length)]).join("");
+  };
+
   const handleAddStudent = () => {
     if (!newName.trim() || !newEmail.trim()) return;
+    const pwd = generatePassword();
     const student: User = { id: Date.now(), name: newName, email: newEmail, role: "student", avatar: newName.split(" ").map(n => n[0]).join("").slice(0, 2).toUpperCase(), progress: 0, coursesCompleted: 0 };
     setStudents(prev => [...prev, student]);
+    setGeneratedPassword(pwd);
     setNewName(""); setNewEmail(""); setShowAdd(false);
+  };
+
+  const updateMeta = (studentId: number, patch: Partial<StudentMeta>) => {
+    setStudentMeta(prev => ({ ...prev, [studentId]: { ...(prev[studentId] || { studentId }), ...patch } }));
   };
 
   return (
     <div className="animate-fade-in space-y-6">
+      {/* Показ сгенерированного пароля */}
+      {generatedPassword && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.5)", backdropFilter: "blur(4px)" }}>
+          <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl animate-scale-in text-center">
+            <div className="w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-4" style={{ background: "#ECFDF5" }}>
+              <Icon name="KeyRound" size={26} style={{ color: "#059669" }} />
+            </div>
+            <h3 className="font-bold text-lg text-foreground mb-1">Ученик добавлен!</h3>
+            <p className="text-sm text-muted-foreground mb-4">Передайте ученику временный пароль для первого входа</p>
+            <div className="flex items-center justify-between px-4 py-3 rounded-xl mb-4" style={{ background: "#F8F9FB", border: "2px dashed #E0E5EF" }}>
+              <span className="font-mono text-xl font-bold tracking-widest text-foreground">{generatedPassword}</span>
+              <button onClick={() => navigator.clipboard.writeText(generatedPassword)}
+                className="w-8 h-8 rounded-lg flex items-center justify-center text-muted-foreground hover:bg-muted transition-all">
+                <Icon name="Copy" size={15} />
+              </button>
+            </div>
+            <p className="text-xs text-muted-foreground mb-4">Ученик может сменить пароль после первого входа</p>
+            <button onClick={() => setGeneratedPassword(null)} className="w-full py-3 rounded-xl font-medium text-white" style={{ background: "#F4720B" }}>
+              Понятно
+            </button>
+          </div>
+        </div>
+      )}
+
       {confirmDelete !== null && (
         <ConfirmDialog message="Аккаунт ученика и все его данные будут удалены."
           onConfirm={() => { setStudents(prev => prev.filter(s => s.id !== confirmDelete)); setConfirmDelete(null); }}
@@ -1303,6 +1598,13 @@ function StudentsView() {
         {students.map(student => {
           const studentDocs = docs[student.id] || [];
           const isExpanded = expandedDocs === student.id;
+          const isStudentExpanded = expandedStudent === student.id;
+          const meta = studentMeta[student.id] || { studentId: student.id };
+          const candidateLabels: Record<CandidateStatus, { label: string; color: string; bg: string }> = {
+            promising: { label: "Перспективный", color: "#059669", bg: "#ECFDF5" },
+            watch: { label: "Требует наблюдения", color: "#D97706", bg: "#FFFBEB" },
+            not_recommended: { label: "Не рекомендован", color: "#DC2626", bg: "#FEF2F2" },
+          };
           return (
             <div key={student.id} className="bg-white rounded-2xl border border-border/50 overflow-hidden">
               {/* Шапка карточки */}
@@ -1312,7 +1614,15 @@ function StudentsView() {
                     {student.avatar}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="font-bold text-foreground">{student.name}</div>
+                    <div className="font-bold text-foreground flex items-center gap-2">
+                      {student.name}
+                      {meta.candidateStatus && (
+                        <span className="text-xs px-2 py-0.5 rounded-full font-medium"
+                          style={{ background: candidateLabels[meta.candidateStatus].bg, color: candidateLabels[meta.candidateStatus].color }}>
+                          {candidateLabels[meta.candidateStatus].label}
+                        </span>
+                      )}
+                    </div>
                     <div className="text-sm text-muted-foreground truncate">{student.email}</div>
                   </div>
                   <div className="text-right shrink-0">
@@ -1329,6 +1639,68 @@ function StudentsView() {
                 </div>
                 <div className="progress-bar mb-4">
                   <div className="progress-fill" style={{ width: `${student.progress}%` }} />
+                </div>
+
+                {/* Оценка кандидата + заметки тренера */}
+                <div className="border-t border-border/50 pt-3 mb-3">
+                  <button onClick={() => setExpandedStudent(isStudentExpanded ? null : student.id)}
+                    className="flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors w-full text-left">
+                    <Icon name="Lock" size={13} />
+                    Только для тренера
+                    <Icon name={isStudentExpanded ? "ChevronUp" : "ChevronDown"} size={13} className="ml-auto" />
+                  </button>
+                  {isStudentExpanded && (
+                    <div className="mt-3 space-y-4 p-4 rounded-xl" style={{ background: "#F8F9FB", border: "1.5px solid #E0E5EF" }}>
+                      {/* Оценка кандидата */}
+                      <div>
+                        <label className="text-xs font-semibold text-foreground mb-2 block">Оценка как кандидата</label>
+                        <div className="flex gap-2 flex-wrap">
+                          {(["promising", "watch", "not_recommended"] as CandidateStatus[]).map(s => (
+                            <button key={s} onClick={() => updateMeta(student.id, { candidateStatus: meta.candidateStatus === s ? undefined : s })}
+                              className="text-xs px-3 py-1.5 rounded-lg font-medium transition-all"
+                              style={{
+                                background: meta.candidateStatus === s ? candidateLabels[s].bg : "#F0F3F8",
+                                color: meta.candidateStatus === s ? candidateLabels[s].color : "#6B7280",
+                                border: meta.candidateStatus === s ? `1.5px solid ${candidateLabels[s].color}` : "1.5px solid transparent",
+                              }}>
+                              {candidateLabels[s].label}
+                            </button>
+                          ))}
+                        </div>
+                        <textarea
+                          value={meta.candidateComment || ""}
+                          onChange={e => updateMeta(student.id, { candidateComment: e.target.value })}
+                          placeholder="Комментарий к оценке..."
+                          rows={2}
+                          className="w-full mt-2 px-3 py-2 rounded-xl text-sm text-foreground resize-none outline-none"
+                          style={{ background: "white", border: "1.5px solid #E0E5EF" }}
+                        />
+                      </div>
+                      {/* Приватные заметки */}
+                      <div>
+                        <label className="text-xs font-semibold text-foreground mb-2 block flex items-center gap-1">
+                          <Icon name="StickyNote" size={12} /> Приватные заметки тренера
+                        </label>
+                        <textarea
+                          value={meta.trainerNotes || ""}
+                          onChange={e => updateMeta(student.id, { trainerNotes: e.target.value })}
+                          placeholder="Личные наблюдения, особенности, договорённости..."
+                          rows={3}
+                          className="w-full px-3 py-2 rounded-xl text-sm text-foreground resize-none outline-none"
+                          style={{ background: "white", border: "1.5px solid #E0E5EF" }}
+                        />
+                      </div>
+                      {/* Заметки ученика (видит тренер) */}
+                      {meta.studentNotes && (
+                        <div>
+                          <label className="text-xs font-semibold text-muted-foreground mb-1 block">Заметки ученика по урокам</label>
+                          <div className="px-3 py-2 rounded-xl text-sm text-foreground" style={{ background: "white", border: "1.5px solid #E0E5EF" }}>
+                            {meta.studentNotes}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 {/* Кнопки документов */}
@@ -1487,6 +1859,11 @@ function ForumView({ user }: { user: User }) {
     });
   };
 
+  const handleToggleClose = (topicId: number) => {
+    setTopics(prev => prev.map(t => t.id === topicId ? { ...t, closed: !t.closed } : t));
+    if (selectedTopic?.id === topicId) setSelectedTopic(prev => prev ? { ...prev, closed: !prev.closed } : null);
+  };
+
   const handleLike = (postId: number) => {
     if (!selectedTopic) return;
     if (likedPosts.includes(postId)) return;
@@ -1522,12 +1899,20 @@ function ForumView({ user }: { user: User }) {
               </div>
             </div>
             {user.role === "trainer" && (
-              <button onClick={() => handleDeleteTopic(selectedTopic.id)}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all shrink-0"
-                style={{ background: "#FEF2F2", color: "#DC2626" }}>
-                <Icon name="Trash2" size={13} />
-                Удалить тему
-              </button>
+              <div className="flex items-center gap-2 shrink-0">
+                <button onClick={() => handleToggleClose(selectedTopic.id)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
+                  style={{ background: selectedTopic.closed ? "#ECFDF5" : "#FFF3E8", color: selectedTopic.closed ? "#059669" : "#D97706" }}>
+                  <Icon name={selectedTopic.closed ? "LockOpen" : "Lock"} size={13} />
+                  {selectedTopic.closed ? "Открыть" : "Закрыть"}
+                </button>
+                <button onClick={() => handleDeleteTopic(selectedTopic.id)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
+                  style={{ background: "#FEF2F2", color: "#DC2626" }}>
+                  <Icon name="Trash2" size={13} />
+                  Удалить
+                </button>
+              </div>
             )}
           </div>
         </div>
@@ -1572,21 +1957,28 @@ function ForumView({ user }: { user: User }) {
           ))}
         </div>
 
-        <div className="bg-white rounded-2xl p-4 border border-border/50">
-          <textarea value={newMsg} onChange={e => setNewMsg(e.target.value)}
-            placeholder="Напишите ответ..."
-            rows={3}
-            className="w-full text-foreground text-[15px] resize-none outline-none bg-transparent placeholder-muted-foreground"
-          />
-          <div className="flex justify-end mt-2">
-            <button onClick={handleSendMessage} disabled={!newMsg.trim()}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl text-white font-medium text-sm disabled:opacity-40"
-              style={{ background: "#F4720B" }}>
-              <Icon name="Send" size={14} />
-              Ответить
-            </button>
+        {selectedTopic.closed ? (
+          <div className="flex items-center gap-2 p-4 rounded-2xl text-sm font-medium" style={{ background: "#F8F9FB", border: "1.5px solid #E0E5EF", color: "#9CA3AF" }}>
+            <Icon name="Lock" size={15} />
+            Тема закрыта для новых сообщений
           </div>
-        </div>
+        ) : (
+          <div className="bg-white rounded-2xl p-4 border border-border/50">
+            <textarea value={newMsg} onChange={e => setNewMsg(e.target.value)}
+              placeholder="Напишите ответ..."
+              rows={3}
+              className="w-full text-foreground text-[15px] resize-none outline-none bg-transparent placeholder-muted-foreground"
+            />
+            <div className="flex justify-end mt-2">
+              <button onClick={handleSendMessage} disabled={!newMsg.trim()}
+                className="flex items-center gap-2 px-4 py-2 rounded-xl text-white font-medium text-sm disabled:opacity-40"
+                style={{ background: "#F4720B" }}>
+                <Icon name="Send" size={14} />
+                Ответить
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
@@ -1711,36 +2103,85 @@ function ForumView({ user }: { user: User }) {
   );
 }
 
+// ─── Watermark ────────────────────────────────────────────────────────────────
+function Watermark({ name }: { name: string }) {
+  return (
+    <div className="pointer-events-none fixed inset-0 overflow-hidden" style={{ zIndex: 10 }}>
+      {Array.from({ length: 20 }).map((_, i) => (
+        <div key={i} className="absolute text-[13px] font-medium select-none"
+          style={{
+            color: "rgba(27,42,74,0.07)",
+            transform: `rotate(-30deg)`,
+            top: `${(i % 5) * 22 + Math.floor(i / 5) * 5}%`,
+            left: `${Math.floor(i / 5) * 28 - 5}%`,
+            whiteSpace: "nowrap",
+            letterSpacing: "0.05em",
+          }}>
+          {name} · ProService Academy
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // ─── Presentation Mode ────────────────────────────────────────────────────────
 function PresentationMode({ onExit }: { onExit: () => void }) {
   const [slide, setSlide] = useState(0);
+  const [darkTheme, setDarkTheme] = useState(true);
   const current = SLIDE_DATA[slide];
 
+  const bg = darkTheme ? "#1B2A4A" : "#FFFFFF";
+  const textColor = darkTheme ? "white" : "#1B2A4A";
+  const subColor = darkTheme ? "rgba(255,255,255,0.6)" : "rgba(27,42,74,0.5)";
+  const arrowBg = darkTheme ? "rgba(255,255,255,0.15)" : "rgba(27,42,74,0.08)";
+  const dotInactive = darkTheme ? "rgba(255,255,255,0.3)" : "rgba(27,42,74,0.2)";
+
+  const handleFullscreen = () => {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen();
+    } else {
+      document.exitFullscreen();
+    }
+  };
+
   return (
-    <div className="fixed inset-0 flex flex-col no-copy" style={{ background: "#1B2A4A", zIndex: 9999 }} onContextMenu={e => e.preventDefault()}>
+    <div className="fixed inset-0 flex flex-col no-copy" style={{ background: bg, zIndex: 9999, transition: "background 0.3s" }} onContextMenu={e => e.preventDefault()}>
       <div className="flex items-center justify-between px-8 pt-6">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" style={{ background: "#F4720B" }}>
             <Icon name="Settings" size={18} className="text-white" />
           </div>
-          <span className="text-white/70 text-sm font-medium">{current.subtitle}</span>
+          <span className="text-sm font-medium" style={{ color: subColor }}>{current.subtitle}</span>
         </div>
-        <div className="flex items-center gap-3">
-          <span className="text-white/40 text-sm">{slide + 1} / {SLIDE_DATA.length}</span>
-          <button onClick={onExit} className="flex items-center gap-2 px-4 py-2.5 rounded-xl font-semibold text-white text-sm transition-all hover:opacity-80"
-            style={{ background: "rgba(255,255,255,0.15)", border: "1px solid rgba(255,255,255,0.25)" }}>
-            <Icon name="X" size={16} />
-            Выйти из презентации
+        <div className="flex items-center gap-2">
+          <span className="text-sm mr-2" style={{ color: subColor }}>{slide + 1} / {SLIDE_DATA.length}</span>
+          {/* Тема */}
+          <button onClick={() => setDarkTheme(v => !v)}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium transition-all"
+            style={{ background: arrowBg, color: textColor }}>
+            <Icon name={darkTheme ? "Sun" : "Moon"} size={15} />
+            {darkTheme ? "Светлый" : "Тёмный"}
+          </button>
+          {/* Полный экран */}
+          <button onClick={handleFullscreen}
+            className="w-9 h-9 rounded-xl flex items-center justify-center transition-all"
+            style={{ background: arrowBg, color: textColor }}>
+            <Icon name="Maximize" size={16} />
+          </button>
+          <button onClick={onExit} className="flex items-center gap-2 px-4 py-2.5 rounded-xl font-semibold text-sm transition-all hover:opacity-80"
+            style={{ background: "#F4720B", color: "white" }}>
+            <Icon name="X" size={15} />
+            Выйти
           </button>
         </div>
       </div>
 
       <div className="flex-1 flex items-center justify-center p-12">
         <div className="max-w-4xl w-full animate-fade-in" key={slide}>
-          <h1 className="text-white text-5xl lg:text-6xl font-bold mb-10 leading-tight">{current.title}</h1>
+          <h1 className="text-5xl lg:text-6xl font-bold mb-10 leading-tight" style={{ color: textColor }}>{current.title}</h1>
           <div className="space-y-5">
             {current.content.map((item, i) => (
-              <div key={i} className="flex items-start gap-4 text-white/90 text-xl lg:text-2xl leading-relaxed">
+              <div key={i} className="flex items-start gap-4 text-xl lg:text-2xl leading-relaxed" style={{ color: darkTheme ? "rgba(255,255,255,0.9)" : "rgba(27,42,74,0.85)" }}>
                 <span className="text-2xl font-bold shrink-0 mt-0.5" style={{ color: "#F4720B" }}>→</span>
                 {item}
               </div>
@@ -1751,22 +2192,20 @@ function PresentationMode({ onExit }: { onExit: () => void }) {
 
       <div className="flex items-center justify-center gap-6 pb-8">
         <button onClick={() => setSlide(s => Math.max(0, s - 1))} disabled={slide === 0}
-          className="flex items-center gap-2 px-6 py-3 rounded-xl font-medium text-white transition-all disabled:opacity-30"
-          style={{ background: "rgba(255,255,255,0.15)" }}>
-          <Icon name="ChevronLeft" size={18} />
-          Назад
+          className="flex items-center gap-2 px-6 py-3 rounded-xl font-medium transition-all disabled:opacity-30"
+          style={{ background: arrowBg, color: textColor }}>
+          <Icon name="ChevronLeft" size={18} />Назад
         </button>
         <div className="flex gap-2">
           {SLIDE_DATA.map((_, i) => (
             <button key={i} onClick={() => setSlide(i)} className="w-2.5 h-2.5 rounded-full transition-all"
-              style={{ background: i === slide ? "#F4720B" : "rgba(255,255,255,0.3)" }} />
+              style={{ background: i === slide ? "#F4720B" : dotInactive }} />
           ))}
         </div>
         <button onClick={() => setSlide(s => Math.min(SLIDE_DATA.length - 1, s + 1))} disabled={slide === SLIDE_DATA.length - 1}
           className="flex items-center gap-2 px-6 py-3 rounded-xl font-medium text-white transition-all disabled:opacity-30"
           style={{ background: "#F4720B" }}>
-          Далее
-          <Icon name="ChevronRight" size={18} />
+          Далее<Icon name="ChevronRight" size={18} />
         </button>
       </div>
     </div>
@@ -1822,8 +2261,12 @@ export default function Index() {
     return null;
   };
 
+  const contentPages = ["courses", "homeworks"];
+  const showWatermark = contentPages.includes(activeTab);
+
   return (
     <div className="flex min-h-screen" style={{ background: "#F0F3F8" }}>
+      {showWatermark && <Watermark name={user.name} />}
       <Sidebar user={user} activeTab={activeTab} setActiveTab={setActiveTab} onLogout={handleLogout} />
 
       <main className="flex-1 min-w-0">
@@ -1852,7 +2295,8 @@ export default function Index() {
           </div>
         </header>
 
-        <div className="p-6 md:p-8 pb-24 md:pb-8">
+        <div className="p-6 md:p-8 pb-24 md:pb-8"
+          onContextMenu={showWatermark ? e => e.preventDefault() : undefined}>
           {renderTab()}
         </div>
       </main>
