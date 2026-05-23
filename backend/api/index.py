@@ -319,9 +319,9 @@ def handler(event: dict, context) -> dict:
         conn = db()
         cur = conn.cursor(cursor_factory=RealDictCursor)
         if 'student_id' in qs:
-            cur.execute("SELECT h.*, u.name as student_name, u.avatar FROM psa_homeworks h JOIN psa_users u ON u.id=h.student_id WHERE h.student_id=%s ORDER BY h.submitted_at DESC", (qs['student_id'],))
+            cur.execute("SELECT h.*, u.name as student_name, u.avatar FROM psa_homeworks h JOIN psa_users u ON u.id=h.student_id WHERE h.student_id=%s AND h.status != 'deleted' ORDER BY h.submitted_at DESC", (qs['student_id'],))
         else:
-            cur.execute("SELECT h.*, u.name as student_name, u.avatar FROM psa_homeworks h JOIN psa_users u ON u.id=h.student_id ORDER BY h.submitted_at DESC")
+            cur.execute("SELECT h.*, u.name as student_name, u.avatar FROM psa_homeworks h JOIN psa_users u ON u.id=h.student_id WHERE h.status != 'deleted' ORDER BY h.submitted_at DESC")
         rows = cur.fetchall()
         conn.close()
         return ok([dict(r) for r in rows])

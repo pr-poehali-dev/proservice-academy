@@ -1545,6 +1545,12 @@ function HomeworksView({ user, onNotify }: { user: User; onNotify?: (n: Omit<Not
     setSelected(null); setGradeInput(""); setTrainerComment("");
   };
 
+  const handleDeleteHw = (hwId: number) => {
+    setHomeworks(prev => prev.filter(h => h.id !== hwId));
+    if (selected?.id === hwId) { setSelected(null); setGradeInput(""); setTrainerComment(""); }
+    API.apiGradeHomework(hwId, { status: "deleted" as "pending" }).catch(() => {});
+  };
+
   const handleSubmitHw = () => {
     if (!submitLesson.trim() || !submitText.trim()) return;
     API.apiSubmitHomework({ student_id: user.id, lesson_title: submitLesson, text: submitText }).then(raw => {
@@ -1563,9 +1569,17 @@ function HomeworksView({ user, onNotify }: { user: User; onNotify?: (n: Omit<Not
   if (selected && user.role === "trainer") {
     return (
       <div className="animate-fade-in space-y-6">
-        <button onClick={() => { setSelected(null); setTrainerComment(""); }} className="flex items-center gap-2 text-muted-foreground hover:text-foreground text-sm font-medium">
-          <Icon name="ArrowLeft" size={16} />Назад
-        </button>
+        <div className="flex items-center justify-between">
+          <button onClick={() => { setSelected(null); setTrainerComment(""); }} className="flex items-center gap-2 text-muted-foreground hover:text-foreground text-sm font-medium">
+            <Icon name="ArrowLeft" size={16} />Назад
+          </button>
+          <button onClick={() => handleDeleteHw(selected.id)}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium transition-all"
+            style={{ background: "#FEF2F2", color: "#DC2626" }}>
+            <Icon name="Trash2" size={14} />
+            Удалить задание
+          </button>
+        </div>
         <div className="bg-white rounded-2xl p-6 border border-border/50">
           <div className="flex items-center gap-3 mb-4">
             <div className="w-10 h-10 rounded-full flex items-center justify-center text-white text-sm font-bold" style={{ background: "#1B2A4A" }}>
@@ -1726,6 +1740,14 @@ function HomeworksView({ user, onNotify }: { user: User; onNotify?: (n: Omit<Not
               }`}>
                 {hw.status === "pending" ? "Новое" : hw.status === "checked" ? "Проверено" : "На доработку"}
               </span>
+              <button onClick={e => { e.stopPropagation(); handleDeleteHw(hw.id); }}
+                className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-all"
+                style={{ color: "#DC2626" }}
+                onMouseEnter={e => (e.currentTarget.style.background = "#FEF2F2")}
+                onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
+                title="Удалить задание">
+                <Icon name="Trash2" size={14} />
+              </button>
             </div>
             <p className="text-sm text-muted-foreground line-clamp-2">{hw.text}</p>
             <div className="text-xs text-muted-foreground mt-2">{hw.submittedAt}</div>
