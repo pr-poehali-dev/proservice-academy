@@ -189,10 +189,19 @@ def handler(event: dict, context) -> dict:
     if path == '/courses' and method == 'GET':
         conn = db()
         cur = conn.cursor(cursor_factory=RealDictCursor)
-        cur.execute("SELECT * FROM psa_courses ORDER BY sort_order, id")
+        # Исключаем мягко удалённые курсы (title='__deleted__' или is_deleted=true)
+        cur.execute("""
+            SELECT * FROM psa_courses
+            WHERE title != '__deleted__'
+            ORDER BY sort_order, id
+        """)
         courses = [dict(c) for c in cur.fetchall()]
-        # Подгружаем уроки
-        cur.execute("SELECT * FROM psa_lessons ORDER BY sort_order, id")
+        cur.execute("""
+            SELECT l.* FROM psa_lessons l
+            JOIN psa_courses c ON c.id = l.course_id
+            WHERE c.title != '__deleted__' AND l.status != 'deleted'
+            ORDER BY l.sort_order, l.id
+        """)
         lessons = [dict(l) for l in cur.fetchall()]
         conn.close()
         for c in courses:
@@ -212,8 +221,18 @@ def handler(event: dict, context) -> dict:
         course['lessons'] = []
         return ok(course, 201)
 
-    if path.startswith('/courses/') and method == 'PATCH':
+    if path.startswith('/courses/') and '/lessons' not in path and method == 'PATCH':
         cid = path.split('/')[2]
+        # Если передан флаг удаления — помечаем title='__deleted__'
+        if body.get('_delete'):
+            conn = db()
+            cur = conn.cursor()
+            cur.execute("UPDATE psa_courses SET title='__deleted__' WHERE id=%s", (cid,))
+            # Помечаем все уроки курса как удалённые
+            cur.execute("UPDATE psa_lessons SET status='deleted' WHERE course_id=%s", (cid,))
+            conn.commit()
+            conn.close()
+            return ok({'ok': True})
         sets, vals = [], []
         for k in ['title', 'description', 'progress', 'students_count']:
             if k in body:

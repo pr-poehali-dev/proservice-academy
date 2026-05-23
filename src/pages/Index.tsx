@@ -757,8 +757,7 @@ function CoursesView({ user }: { user: User }) {
 
   const handleDeleteCourse = (courseId: number) => {
     setCourses(prev => prev.filter(c => c.id !== courseId));
-    // Мягкое удаление — помечаем все уроки курса черновиками
-    API.apiUpdateCourse(courseId, { title: '__deleted__' }).catch(() => {});
+    API.apiUpdateCourse(courseId, { _delete: true }).catch(() => {});
   };
 
   const handleCreateCourse = () => {
