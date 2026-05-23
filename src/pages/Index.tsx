@@ -59,6 +59,7 @@ interface ForumTopic {
   role: string;
   createdAt: string;
   posts: ForumPost[];
+  pinned?: boolean;
 }
 
 interface Notification {
@@ -1262,6 +1263,13 @@ function ForumView({ user }: { user: User }) {
     setNewMsg("");
   };
 
+  const handleTogglePin = (topicId: number) => {
+    setTopics(prev => {
+      const updated = prev.map(t => t.id === topicId ? { ...t, pinned: !t.pinned } : t);
+      return [...updated.filter(t => t.pinned), ...updated.filter(t => !t.pinned)];
+    });
+  };
+
   const handleLike = (postId: number) => {
     if (!selectedTopic) return;
     if (likedPosts.includes(postId)) return;
@@ -1402,25 +1410,46 @@ function ForumView({ user }: { user: User }) {
       <div className="space-y-3">
         {topics.map(topic => (
           <div key={topic.id} className="bg-white rounded-2xl p-5 border border-border/50 hover-lift cursor-pointer"
+            style={topic.pinned ? { borderColor: "#F4720B", borderWidth: "1.5px" } : {}}
             onClick={() => setSelectedTopic(topic)}>
             <div className="flex items-start gap-3">
               <div className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-sm shrink-0" style={{ background: "#1B2A4A" }}>
                 {topic.avatar}
               </div>
               <div className="flex-1 min-w-0">
-                <h3 className="font-semibold text-foreground leading-snug mb-1">{topic.title}</h3>
-                <div className="flex items-center gap-2 text-xs text-muted-foreground flex-wrap">
+                <div className="flex items-center gap-2 mb-1 flex-wrap">
+                  {topic.pinned && (
+                    <span className="flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full"
+                      style={{ background: "#FFF3E8", color: "#F4720B" }}>
+                      <Icon name="Pin" size={10} />
+                      Закреплено
+                    </span>
+                  )}
+                  <h3 className="font-semibold text-foreground leading-snug">{topic.title}</h3>
+                </div>
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
                   <span className="font-medium" style={{ color: topic.role === "Тренер" ? "#F4720B" : "#1B2A4A" }}>{topic.author}</span>
                   <span>·</span>
                   <span>{topic.createdAt}</span>
                 </div>
               </div>
-              <div className="flex items-center gap-1.5 text-sm text-muted-foreground shrink-0">
-                <Icon name="MessageSquare" size={14} />
-                {topic.posts.length}
+              <div className="flex items-center gap-2 shrink-0">
+                {user.role === "trainer" && (
+                  <button
+                    onClick={e => { e.stopPropagation(); handleTogglePin(topic.id); }}
+                    className="w-8 h-8 rounded-lg flex items-center justify-center transition-all"
+                    style={{ background: topic.pinned ? "#FFF3E8" : "transparent", color: topic.pinned ? "#F4720B" : "#9CA3AF" }}
+                    title={topic.pinned ? "Открепить" : "Закрепить"}>
+                    <Icon name="Pin" size={14} />
+                  </button>
+                )}
+                <div className="flex items-center gap-1 text-sm text-muted-foreground">
+                  <Icon name="MessageSquare" size={14} />
+                  {topic.posts.length}
+                </div>
               </div>
             </div>
-            <p className="text-sm text-muted-foreground mt-3 line-clamp-2 pl-13" style={{ paddingLeft: "52px" }}>
+            <p className="text-sm text-muted-foreground mt-3 line-clamp-2" style={{ paddingLeft: "52px" }}>
               {topic.posts[0].text}
             </p>
           </div>
