@@ -744,8 +744,63 @@ function MarkdownEditor({ value, onChange, rows = 4, placeholder = "", style, sh
   value: string; onChange: (v: string) => void; rows?: number; placeholder?: string; style?: React.CSSProperties; showSlideButtons?: boolean;
 }) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const wrapperRef = useRef<HTMLDivElement>(null);
   const [tableModal, setTableModal] = useState<TableModalState | null>(null);
   const [showPasteHint, setShowPasteHint] = useState(false);
+
+  // Floating toolbar state
+  const [floatBar, setFloatBar] = useState<{ x: number; y: number; start: number; end: number } | null>(null);
+  // Slide title modal state
+  const [slideModal, setSlideModal] = useState<{ type: "exact" | "improve" | "extract"; selStart: number; selEnd: number } | null>(null);
+  const [slideTitle, setSlideTitle] = useState("");
+
+  const handleSelect = () => {
+    const el = textareaRef.current;
+    const wrap = wrapperRef.current;
+    if (!el || !wrap) return;
+    const start = el.selectionStart;
+    const end = el.selectionEnd;
+    if (start === end || !showSlideButtons) { setFloatBar(null); return; }
+    // Позиция относительно wrapper
+    const rect = el.getBoundingClientRect();
+    const wRect = wrap.getBoundingClientRect();
+    // Примерная позиция — над textarea, смещение от верха wrapper
+    setFloatBar({ x: 0, y: 0, start, end });
+  };
+
+  const handleFloatAction = (type: "exact" | "improve" | "extract") => {
+    if (!floatBar) return;
+    setSlideModal({ type, selStart: floatBar.start, selEnd: floatBar.end });
+    setSlideTitle("");
+    setFloatBar(null);
+  };
+
+  const handleCreateSlide = () => {
+    if (!slideModal || !slideTitle.trim()) return;
+    const el = textareaRef.current;
+    if (!el) return;
+    const { type, selStart, selEnd } = slideModal;
+    const selected = value.slice(selStart, selEnd);
+    let wrapped: string;
+    if (type === "exact") {
+      wrapped = `[СЛАЙД-ТОЧНЫЙ: ${slideTitle.trim()}]\n${selected}\n[/СЛАЙД-ТОЧНЫЙ]`;
+    } else if (type === "extract") {
+      wrapped = `[СЛАЙД-ВЫЖИМКА: ${slideTitle.trim()}]\n${selected}\n[/СЛАЙД-ВЫЖИМКА]`;
+    } else {
+      wrapped = `[СЛАЙД: ${slideTitle.trim()}]\n${selected}\n[/СЛАЙД]`;
+    }
+    const newVal = value.slice(0, selStart) + wrapped + value.slice(selEnd);
+    onChange(newVal);
+    setSlideModal(null);
+    setSlideTitle("");
+    setTimeout(() => { el.focus(); }, 0);
+  };
+
+  const typeLabels: Record<string, { label: string; color: string; desc: string }> = {
+    exact: { label: "🎯 Как есть", color: "#3B82F6", desc: "Текст берётся без изменений" },
+    improve: { label: "✨ Улучшить", color: "#10B981", desc: "Ollama улучшит формулировки" },
+    extract: { label: "💡 Выжимка", color: "#8B5CF6", desc: "Ollama извлечёт 3-4 главные мысли" },
+  };
 
   const insert = (before: string, after = "", placeholder = "") => {
     const el = textareaRef.current;
@@ -868,7 +923,62 @@ function MarkdownEditor({ value, onChange, rows = 4, placeholder = "", style, sh
   const btnStyle = { background: "#F0F3F8" };
 
   return (
-    <div className="rounded-xl overflow-hidden" style={{ border: "1.5px solid #E0E5EF" }}>
+    <div ref={wrapperRef} className="rounded-xl overflow-hidden relative" style={{ border: "1.5px solid #E0E5EF" }}>
+
+      {/* Floating toolbar при выделении */}
+      {floatBar && showSlideButtons && (
+        <div className="absolute left-2 z-50 flex items-center gap-1 p-1 rounded-xl shadow-lg animate-fade-in"
+          style={{ bottom: "calc(100% - 40px)", background: "#1B2A4A", border: "1px solid rgba(255,255,255,0.1)" }}>
+          {(["exact", "improve", "extract"] as const).map(type => (
+            <button key={type} type="button" onMouseDown={e => { e.preventDefault(); handleFloatAction(type); }}
+              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium text-white transition-all hover:opacity-80"
+              style={{ background: typeLabels[type].color }}
+              title={typeLabels[type].desc}>
+              {typeLabels[type].label}
+            </button>
+          ))}
+          <button type="button" onMouseDown={e => { e.preventDefault(); setFloatBar(null); }}
+            className="w-6 h-6 flex items-center justify-center text-white/50 hover:text-white">
+            <Icon name="X" size={12} />
+          </button>
+        </div>
+      )}
+
+      {/* Модал ввода заголовка слайда */}
+      {slideModal && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center p-4"
+          style={{ background: "rgba(0,0,0,0.4)" }}
+          onClick={e => { if (e.target === e.currentTarget) setSlideModal(null); }}>
+          <div className="bg-white rounded-2xl p-6 shadow-2xl w-80 animate-fade-in">
+            <div className="flex items-center gap-2 mb-4">
+              <span className="w-7 h-7 rounded-lg flex items-center justify-center text-white text-xs font-bold"
+                style={{ background: typeLabels[slideModal.type].color }}>
+                {slideModal.type === "exact" ? "🎯" : slideModal.type === "improve" ? "✨" : "💡"}
+              </span>
+              <h4 className="font-bold text-foreground">{typeLabels[slideModal.type].label}</h4>
+            </div>
+            <p className="text-xs text-muted-foreground mb-3">{typeLabels[slideModal.type].desc}</p>
+            <label className="text-sm font-medium text-foreground mb-1.5 block">Заголовок слайда</label>
+            <input value={slideTitle} onChange={e => setSlideTitle(e.target.value)}
+              onKeyDown={e => { if (e.key === "Enter") handleCreateSlide(); if (e.key === "Escape") setSlideModal(null); }}
+              placeholder="Введите заголовок..."
+              autoFocus
+              className="w-full px-3 py-2.5 rounded-xl text-foreground text-sm outline-none mb-4"
+              style={{ background: "#F8F9FB", border: "1.5px solid #E0E5EF" }} />
+            <div className="flex gap-2">
+              <button onClick={() => setSlideModal(null)}
+                className="flex-1 py-2.5 rounded-xl text-sm font-medium" style={{ background: "#F0F3F8", color: "#6B7280" }}>
+                Отмена
+              </button>
+              <button onClick={handleCreateSlide} disabled={!slideTitle.trim()}
+                className="flex-1 py-2.5 rounded-xl text-sm font-medium text-white disabled:opacity-40"
+                style={{ background: typeLabels[slideModal.type].color }}>
+                Создать слайд
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {/* Toolbar */}
       <div className="flex items-center gap-1 px-2 py-1.5 flex-wrap" style={{ background: "#F8F9FB", borderBottom: "1px solid #E0E5EF" }}>
         <button type="button" onClick={() => insertHeading(1)} className={btnCls} style={btnStyle} title="Заголовок H1">H1</button>
@@ -956,6 +1066,9 @@ function MarkdownEditor({ value, onChange, rows = 4, placeholder = "", style, sh
         value={value}
         onChange={e => onChange(e.target.value)}
         onPaste={handlePaste}
+        onMouseUp={handleSelect}
+        onKeyUp={handleSelect}
+        onBlur={() => { if (!slideModal) setTimeout(() => setFloatBar(null), 150); }}
         placeholder={placeholder}
         rows={rows}
         className="w-full px-3 py-2.5 text-foreground text-sm outline-none resize-none font-mono"
@@ -1628,77 +1741,72 @@ function CoursesView({ user }: { user: User }) {
       return;
     }
 
-    // ЭТАП 1: Извлечение слайдов из тегов
-    const blocks = [...text.matchAll(/\[СЛАЙД:\s*([^\]]+)\]([\s\S]*?)\[\/СЛАЙД\]/gi)];
+    // ЭТАП 1: Извлечение всех типов тегов в порядке появления
+    type ExtractedSlide = { title: string; content: string[]; bullets: string[]; mode: "exact" | "improve" | "extract" };
 
-    if (blocks.length === 0) {
-      setAiError(`В тексте урока не найдены метки слайдов.\nДобавьте в текст урока блоки формата:\n[СЛАЙД: Заголовок]\n- Тезис 1\n- Тезис 2\n[/СЛАЙД]\nИли создайте слайды вручную.`);
+    const parseBody = (body: string) => {
+      const lines = body.split(/\n/).map(l => l.trim()).filter(l => l.length > 0);
+      return {
+        bullets: lines.filter(l => /^[-•*]/.test(l)).map(l => l.replace(/^[-•*]\s*/, "")),
+        content: lines.filter(l => !/^[-•*]/.test(l)),
+      };
+    };
+
+    const allBlocks: ExtractedSlide[] = [];
+    const tagRegex = /\[(СЛАЙД-ТОЧНЫЙ|СЛАЙД-ВЫЖИМКА|СЛАЙД):\s*([^\]]+)\]([\s\S]*?)\[\/(СЛАЙД-ТОЧНЫЙ|СЛАЙД-ВЫЖИМКА|СЛАЙД)\]/gi;
+    for (const m of text.matchAll(tagRegex)) {
+      const tagType = m[1].toUpperCase();
+      const mode: "exact" | "improve" | "extract" =
+        tagType === "СЛАЙД-ТОЧНЫЙ" ? "exact" :
+        tagType === "СЛАЙД-ВЫЖИМКА" ? "extract" : "improve";
+      const { bullets, content } = parseBody(m[3]);
+      allBlocks.push({ title: m[2].trim(), content, bullets, mode });
+    }
+
+    if (allBlocks.length === 0) {
+      setAiError(`В тексте урока не найдены метки слайдов.\nВыделите текст мышью — появятся кнопки «🎯 Как есть», «✨ Улучшить», «💡 Выжимка».\nИли создайте слайды вручную.`);
       return;
     }
 
-    const extracted = blocks.map(match => {
-      const title = match[1].trim();
-      const lines = match[2].split(/\n/).map(l => l.trim()).filter(l => l.length > 0);
-      const bullets = lines.filter(l => /^[-•*]/.test(l)).map(l => l.replace(/^[-•*]\s*/, ""));
-      const content = lines.filter(l => !/^[-•*]/.test(l));
-      return { title, content, bullets };
-    });
-
-    // ЭТАП 2: Редактура каждого слайда через ИИ
+    // ЭТАП 2: Обработка — exact как есть, improve/extract через ИИ
     const { callAi: ai } = await import("@/lib/ai");
-    const total = extracted.length;
-    const refined = [...extracted];
+    const total = allBlocks.length;
+    const refined = allBlocks.map(s => ({ title: s.title, content: s.content, bullets: s.bullets }));
     let aiWorked = false;
 
     for (let i = 0; i < total; i++) {
+      const slide = allBlocks[i];
+      if (slide.mode === "exact") continue;
+
       setAiProgress({ current: i + 1, total });
-      const slide = extracted[i];
       const allPoints = [...slide.content, ...slide.bullets];
-      const prompt = `You are a professional presentation editor. Your task: improve slide text for clarity and visual impact. Output ONLY valid JSON.
 
-Input slide:
-Title: ${slide.title}
-Points: ${allPoints.map((p, n) => `${n + 1}. ${p}`).join("\n")}
-
-Rules for improvement:
-1. Title: max 5 words, specific and punchy
-2. Each point: ONE complete thought, max 7 words
-3. All points same grammatical structure (parallel construction)
-4. Remove filler words and water
-5. Keep original meaning and terminology
-6. Keep language Russian
-7. Points count: same as input (do not add or remove points)
-
-Output format (STRICT JSON only):
-{"title": "...", "content": ["...", "..."]}
-
-No explanations. No markdown. Only JSON.`;
+      const prompt = slide.mode === "extract"
+        ? `Извлеки из текста 3-4 главные мысли. Каждая мысль — максимум 7 слов. Сохрани язык оригинала.
+Ответь строго JSON: {"title": "${slide.title}", "content": ["...", "..."]}
+Текст:\n${allPoints.join("\n")}`
+        : `Улучши тезисы слайда: сделай каждый не длиннее 7 слов, одинаковая структура фраз, убери лишние слова. Сохрани смысл и язык.
+Ответь строго JSON: {"title": "${slide.title}", "content": ["...", "..."]}
+Тезисы:\n${allPoints.map((p, n) => `${n + 1}. ${p}`).join("\n")}`;
 
       try {
         const reply = await ai(prompt, "", 0.2, { num_predict: 512 });
         const cleaned = reply.trim().replace(/```json|```/g, "").trim();
-        // Вырезаем JSON объект
-        const m = cleaned.match(/\{[\s\S]*\}/);
-        if (m) {
-          const parsed = JSON.parse(m[0]);
-          if (parsed.title && Array.isArray(parsed.content) && parsed.content.length > 0) {
-            refined[i] = {
-              title: parsed.title,
-              content: [],
-              bullets: parsed.content.map(String).filter(Boolean),
-            };
+        const mj = cleaned.match(/\{[\s\S]*\}/);
+        if (mj) {
+          const parsed = JSON.parse(mj[0]);
+          if (Array.isArray(parsed.content) && parsed.content.length > 0) {
+            refined[i] = { title: parsed.title || slide.title, content: [], bullets: parsed.content.map(String).filter(Boolean) };
             aiWorked = true;
           }
         }
-      } catch (_e) {
-        // Оставляем слайд без изменений при ошибке
-      }
+      } catch (_e) { /* оставляем как есть */ }
     }
 
     setAiProgress(null);
-
-    if (!aiWorked) {
-      setAiError("ИИ недоступен. Слайды созданы из текста без редактуры. Вы можете отредактировать их вручную.");
+    const needsAi = allBlocks.some(s => s.mode !== "exact");
+    if (needsAi && !aiWorked) {
+      setAiError("ИИ недоступен — слайды созданы без редактуры. Вы можете отредактировать их вручную.");
     }
 
     setLessonSlides(refined);
