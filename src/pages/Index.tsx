@@ -1605,17 +1605,21 @@ ${text}`;
         } catch (_e) { /* пробуем дальше */ }
       }
 
-      // Попытка 2: парсим весь ответ как JSON (может быть объект с массивом внутри)
+      // Попытка 2: парсим весь ответ как JSON (объект вида {"slides": [...]})
       if (!parsed) {
         try {
           const cleaned = reply.trim().replace(/```json|```/g, "").trim();
           const raw = JSON.parse(cleaned);
-          if (Array.isArray(raw) && raw.length > 0 && raw[0].title) {
+          if (Array.isArray(raw) && raw.length > 0) {
             parsed = raw;
           } else if (raw && typeof raw === "object") {
-            // Ищем массив с нужной структурой среди значений объекта
-            const arr = Object.values(raw).find(v => Array.isArray(v) && (v as unknown[]).length > 0 && (v[0] as Record<string, unknown>)?.title);
-            if (arr) parsed = arr as { title: string; content: string[] }[];
+            // Ищем любой массив среди значений объекта ({"slides": [...], "items": [...]})
+            for (const val of Object.values(raw)) {
+              if (Array.isArray(val) && val.length > 0 && (val[0] as Record<string, unknown>)?.title) {
+                parsed = val as { title: string; content: string[] }[];
+                break;
+              }
+            }
           }
         } catch (_e) { /* пробуем дальше */ }
       }
@@ -1624,10 +1628,25 @@ ${text}`;
         setAiRawResponse(reply);
         throw new Error("Не удалось извлечь слайды из ответа модели");
       }
-      const newSlides = parsed.map((s: { title?: string; content?: string[] }) => ({
-        title: s.title || "",
-        content: Array.isArray(s.content) ? s.content : [],
-      }));
+
+      // Нормализуем структуру — модель может вернуть "text" вместо "content"
+      type RawSlide = { title?: string; content?: unknown; text?: string; points?: unknown; items?: unknown };
+      const normalizeContent = (s: RawSlide): string[] => {
+        // content — массив строк (правильный формат)
+        if (Array.isArray(s.content) && s.content.length > 0) return s.content.map(String).filter(Boolean);
+        // text — строка с \n (разбиваем на строки)
+        if (typeof s.text === "string" && s.text.trim()) {
+          return s.text.split(/\n+/).map(l => l.replace(/^[-•*]\s*/, "").trim()).filter(Boolean);
+        }
+        // points / items — альтернативные названия массива
+        if (Array.isArray(s.points)) return s.points.map(String).filter(Boolean);
+        if (Array.isArray(s.items)) return s.items.map(String).filter(Boolean);
+        return [];
+      };
+
+      const newSlides = (parsed as RawSlide[])
+        .filter(s => s.title && s.title.trim())  // убираем пустые слайды
+        .map(s => ({ title: (s.title || "").trim(), content: normalizeContent(s) }));
       setLessonSlides(newSlides);
       setSlidesDirty(false);
       // Автосохранение после генерации
