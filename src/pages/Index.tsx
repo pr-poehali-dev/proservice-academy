@@ -740,8 +740,8 @@ function MarkdownRenderer({ text, className = "" }: { text: string; className?: 
 // ─── MarkdownEditor ────────────────────────────────────────────────────────────
 interface TableModalState { rows: number; cols: number }
 
-function MarkdownEditor({ value, onChange, rows = 4, placeholder = "", style }: {
-  value: string; onChange: (v: string) => void; rows?: number; placeholder?: string; style?: React.CSSProperties;
+function MarkdownEditor({ value, onChange, rows = 4, placeholder = "", style, showSlideButtons = false }: {
+  value: string; onChange: (v: string) => void; rows?: number; placeholder?: string; style?: React.CSSProperties; showSlideButtons?: boolean;
 }) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [tableModal, setTableModal] = useState<TableModalState | null>(null);
@@ -891,6 +891,51 @@ function MarkdownEditor({ value, onChange, rows = 4, placeholder = "", style }: 
           <Icon name="Table" size={13} />
           Таблица
         </button>
+        {showSlideButtons && (
+          <>
+            <div className="w-px h-5 mx-0.5" style={{ background: "#E0E5EF" }} />
+            <button type="button"
+              onClick={() => {
+                const el = textareaRef.current;
+                if (!el) return;
+                const pos = el.selectionStart;
+                const snippet = "\n[СЛАЙД: Заголовок слайда]\n- Тезис 1\n- Тезис 2\n- Тезис 3\n[/СЛАЙД]\n";
+                const newVal = value.slice(0, pos) + snippet + value.slice(pos);
+                onChange(newVal);
+                setTimeout(() => {
+                  el.focus();
+                  const titleStart = pos + "\n[СЛАЙД: ".length;
+                  el.setSelectionRange(titleStart, titleStart + "Заголовок слайда".length);
+                }, 0);
+              }}
+              className="flex items-center gap-1 px-2.5 h-7 rounded-lg text-xs font-medium transition-all hover:opacity-80"
+              style={{ background: "#1B2A4A", color: "white" }}
+              title="Вставить блок слайда для презентации">
+              <Icon name="Plus" size={12} />
+              + Слайд
+            </button>
+            <button type="button"
+              onClick={() => {
+                const el = textareaRef.current;
+                if (!el) return;
+                const pos = el.selectionStart;
+                const snippet = "- Тезис\n";
+                const newVal = value.slice(0, pos) + snippet + value.slice(pos);
+                onChange(newVal);
+                setTimeout(() => {
+                  el.focus();
+                  const tStart = pos + "- ".length;
+                  el.setSelectionRange(tStart, tStart + "Тезис".length);
+                }, 0);
+              }}
+              className="flex items-center gap-1 px-2.5 h-7 rounded-lg text-xs font-medium transition-all hover:opacity-80"
+              style={{ background: "#F0F3F8", color: "#374151" }}
+              title="Вставить строку тезиса">
+              <Icon name="Minus" size={12} />
+              + Тезис
+            </button>
+          </>
+        )}
         <button type="button" onClick={() => setShowPasteHint(v => !v)}
           className="flex items-center gap-1 px-2 h-7 rounded-lg text-xs font-medium transition-all hover:bg-gray-200 ml-auto"
           style={{ background: "#F0F3F8", color: "#6B7280" }}
@@ -2054,7 +2099,7 @@ function CoursesView({ user }: { user: User }) {
 
         {editingLesson && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.5)", backdropFilter: "blur(4px)" }}>
-            <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl animate-scale-in overflow-hidden max-h-[90vh] flex flex-col">
+            <div className="bg-white rounded-2xl w-full max-w-3xl shadow-2xl animate-scale-in overflow-hidden max-h-[92vh] flex flex-col">
               <div className="flex items-center justify-between p-6 border-b border-border/50">
                 <h3 className="text-lg font-bold text-foreground">Редактировать урок</h3>
                 <button onClick={() => setEditingLesson(null)} className="w-8 h-8 rounded-lg flex items-center justify-center text-muted-foreground hover:bg-muted transition-colors">
@@ -2113,7 +2158,7 @@ function CoursesView({ user }: { user: User }) {
                       </span>
                     </span>
                   </label>
-                  <MarkdownEditor value={lessonContent} onChange={setLessonContent} rows={4} placeholder="Конспект занятия, сценарий, методические заметки..." />
+                  <MarkdownEditor value={lessonContent} onChange={setLessonContent} rows={6} placeholder="Конспект занятия, сценарий, методические заметки..." showSlideButtons />
                 </div>
                 <div>
                   <label className="text-sm font-medium text-foreground mb-1.5 block flex items-center gap-1.5">
