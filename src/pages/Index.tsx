@@ -809,26 +809,57 @@ function MarkdownEditor({ value, onChange, rows = 4, placeholder = "", style }: 
     setTimeout(() => { el.focus(); }, 0);
   };
 
-  // Вставка таблицы из буфера обмена (HTML → markdown)
+  // Вставка из буфера: если есть HTML с таблицей — конвертируем таблицы в markdown, остальное берём как текст
+  const htmlNodeToMd = (node: Element): string => {
+    const tag = node.tagName?.toLowerCase();
+    if (tag === "table") {
+      const rows = Array.from(node.querySelectorAll("tr"));
+      const mdRows = rows.map(row => {
+        const cells = Array.from(row.querySelectorAll("td, th")).map(td => (td.textContent?.trim() || "").replace(/\|/g, "\\|"));
+        return "| " + cells.join(" | ") + " |";
+      });
+      if (mdRows.length === 0) return "";
+      const colCount = mdRows[0].split("|").filter(c => c.trim()).length;
+      const sep = "| " + Array(colCount).fill("---").join(" | ") + " |";
+      return "\n" + [mdRows[0], sep, ...mdRows.slice(1)].join("\n") + "\n";
+    }
+    // Для блочных элементов рекурсивно обходим дочерние
+    const blockTags = ["p", "div", "li", "h1", "h2", "h3", "h4", "h5", "h6", "br"];
+    if (blockTags.includes(tag)) {
+      const children = Array.from(node.childNodes).map(child => {
+        if (child.nodeType === 3) return child.textContent || "";
+        if (child.nodeType === 1) return htmlNodeToMd(child as Element);
+        return "";
+      }).join("").trim();
+      return children ? children + "\n" : "\n";
+    }
+    // Для всех остальных — просто текст
+    return node.textContent?.trim() || "";
+  };
+
   const handlePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
     const html = e.clipboardData.getData("text/html");
-    if (!html || !html.includes("<table")) return;
+    if (!html || !html.includes("<table")) return; // нет таблицы — браузер вставит сам
     e.preventDefault();
     const parser = new DOMParser();
     const doc = parser.parseFromString(html, "text/html");
-    const table = doc.querySelector("table");
-    if (!table) return;
-    const rows = Array.from(table.querySelectorAll("tr"));
-    const mdRows = rows.map((row, ri) => {
-      const cells = Array.from(row.querySelectorAll("td, th")).map(td => td.textContent?.trim().replace(/\|/g, "\\|") || "");
-      return "| " + cells.join(" | ") + " |";
+    const body = doc.body;
+    // Обходим все узлы верхнего уровня
+    const parts: string[] = [];
+    body.childNodes.forEach(node => {
+      if (node.nodeType === 3) {
+        const t = node.textContent?.trim();
+        if (t) parts.push(t);
+      } else if (node.nodeType === 1) {
+        parts.push(htmlNodeToMd(node as Element));
+      }
     });
-    if (mdRows.length === 0) return;
-    const sep = "| " + Array(mdRows[0].split("|").length - 2).fill("---").join(" | ") + " |";
-    const mdTable = "\n" + [mdRows[0], sep, ...mdRows.slice(1)].join("\n") + "\n";
+    const result = parts.join("").replace(/\n{3,}/g, "\n\n").trim();
     const el = textareaRef.current!;
-    const pos = el.selectionStart;
-    onChange(value.slice(0, pos) + mdTable + value.slice(pos));
+    const start = el.selectionStart;
+    const end = el.selectionEnd;
+    const newVal = value.slice(0, start) + (result ? "\n" + result + "\n" : "") + value.slice(end);
+    onChange(newVal);
     setShowPasteHint(false);
   };
 
