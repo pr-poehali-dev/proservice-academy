@@ -894,45 +894,44 @@ function MarkdownEditor({ value, onChange, rows = 4, placeholder = "", style, sh
         {showSlideButtons && (
           <>
             <div className="w-px h-5 mx-0.5" style={{ background: "#E0E5EF" }} />
+            {/* Открывающий тег — вставляет [СЛАЙД: ...] в позицию курсора */}
             <button type="button"
               onClick={() => {
                 const el = textareaRef.current;
                 if (!el) return;
                 const pos = el.selectionStart;
-                const snippet = "\n[СЛАЙД: Заголовок слайда]\n- Тезис 1\n- Тезис 2\n- Тезис 3\n[/СЛАЙД]\n";
-                const newVal = value.slice(0, pos) + snippet + value.slice(pos);
+                const tag = "[СЛАЙД: Заголовок]";
+                const newVal = value.slice(0, pos) + tag + value.slice(pos);
                 onChange(newVal);
                 setTimeout(() => {
                   el.focus();
-                  const titleStart = pos + "\n[СЛАЙД: ".length;
-                  el.setSelectionRange(titleStart, titleStart + "Заголовок слайда".length);
+                  const titleStart = pos + "[СЛАЙД: ".length;
+                  el.setSelectionRange(titleStart, titleStart + "Заголовок".length);
                 }, 0);
               }}
-              className="flex items-center gap-1 px-2.5 h-7 rounded-lg text-xs font-medium transition-all hover:opacity-80"
+              className="flex items-center gap-1 px-2.5 h-7 rounded-lg text-xs font-medium transition-all hover:opacity-90"
               style={{ background: "#1B2A4A", color: "white" }}
-              title="Вставить блок слайда для презентации">
-              <Icon name="Plus" size={12} />
-              + Слайд
+              title="Вставить открывающий тег слайда [СЛАЙД: Заголовок]">
+              [СЛАЙД
             </button>
+            {/* Закрывающий тег — вставляет [/СЛАЙД] в позицию курсора */}
             <button type="button"
               onClick={() => {
                 const el = textareaRef.current;
                 if (!el) return;
                 const pos = el.selectionStart;
-                const snippet = "- Тезис\n";
-                const newVal = value.slice(0, pos) + snippet + value.slice(pos);
+                const tag = "[/СЛАЙД]";
+                const newVal = value.slice(0, pos) + tag + value.slice(pos);
                 onChange(newVal);
                 setTimeout(() => {
                   el.focus();
-                  const tStart = pos + "- ".length;
-                  el.setSelectionRange(tStart, tStart + "Тезис".length);
+                  el.setSelectionRange(pos + tag.length, pos + tag.length);
                 }, 0);
               }}
-              className="flex items-center gap-1 px-2.5 h-7 rounded-lg text-xs font-medium transition-all hover:opacity-80"
-              style={{ background: "#F0F3F8", color: "#374151" }}
-              title="Вставить строку тезиса">
-              <Icon name="Minus" size={12} />
-              + Тезис
+              className="flex items-center gap-1 px-2.5 h-7 rounded-lg text-xs font-medium transition-all hover:opacity-90"
+              style={{ background: "#374151", color: "white" }}
+              title="Вставить закрывающий тег [/СЛАЙД]">
+              /СЛАЙД]
             </button>
           </>
         )}
