@@ -1574,48 +1574,55 @@ function CoursesView({ user }: { user: User }) {
     setAiRawResponse("");
     try {
       const { callAi: ai } = await import("@/lib/ai");
-      const prompt = `You are a JSON generator. Your ONLY task is to output valid JSON. No explanations, no markdown, no extra text.
+      const prompt = `You are a presentation slide generator. Output ONLY a JSON array. No text before or after.
 
-Input: Russian text about automotive service
-Output format (STRICT):
-[
-  {"title": "Заголовок на русском", "content": ["Тезис 1 на русском", "Тезис 2 на русском"]},
-  {"title": "Второй заголовок", "content": ["Тезис 1", "Тезис 2"]}
-]
+REQUIRED OUTPUT — a JSON array like this:
+[{"title":"Slide title in Russian","content":["Point 1 in Russian","Point 2 in Russian","Point 3 in Russian"]},{"title":"Second slide","content":["Point 1","Point 2"]}]
 
-Rules:
-- Maximum 10 slides
-- Title: max 7 words in Russian
-- Content: 3-5 short points in Russian
-- Keep original Russian language from input text
-- Output ONLY the JSON array, nothing else
-- No markdown code blocks
-- No explanations before or after
+STRICT RULES:
+- Output starts with [ and ends with ]
+- Maximum 10 objects in the array
+- Each object has exactly two keys: "title" (string, max 7 words) and "content" (array of 3-5 strings)
+- All text MUST be in Russian language
+- NO markdown, NO explanations, NO extra keys, NO nesting
 
-Text to convert:
+Text to convert into slides:
 ${text}`;
       const reply = await ai(prompt, "", 0.3);
       console.log("[AI slides] raw reply:", reply);
-      // Очищаем ответ перед парсингом
-      let cleaned = reply.trim();
-      cleaned = cleaned.replace(/```json|```/g, "");
-      cleaned = cleaned.replace(/^[\s\S]*?(\[)/, "$1");
-      cleaned = cleaned.replace(/(\])[\s\S]*$/, "$1");
-      cleaned = cleaned.trim();
-      if (!cleaned) {
-        setAiRawResponse(reply);
-        throw new Error("JSON не найден в ответе модели");
+
+      // Извлекаем и парсим JSON
+      let parsed: { title: string; content: string[] }[] | null = null;
+
+      // Попытка 1: ищем внешний массив [ ... ]
+      const arrayMatch = reply.match(/\[[\s\S]*\]/);
+      if (arrayMatch) {
+        try {
+          const candidate = JSON.parse(arrayMatch[0]);
+          if (Array.isArray(candidate) && candidate.length > 0 && candidate[0].title) {
+            parsed = candidate;
+          }
+        } catch (_e) { /* пробуем дальше */ }
       }
-      let parsed: { title: string; content: string[] }[];
-      try {
-        parsed = JSON.parse(cleaned);
-      } catch (_parseErr) {
-        setAiRawResponse(reply);
-        throw new Error("Не удалось разобрать JSON");
+
+      // Попытка 2: парсим весь ответ как JSON (может быть объект с массивом внутри)
+      if (!parsed) {
+        try {
+          const cleaned = reply.trim().replace(/```json|```/g, "").trim();
+          const raw = JSON.parse(cleaned);
+          if (Array.isArray(raw) && raw.length > 0 && raw[0].title) {
+            parsed = raw;
+          } else if (raw && typeof raw === "object") {
+            // Ищем массив с нужной структурой среди значений объекта
+            const arr = Object.values(raw).find(v => Array.isArray(v) && (v as unknown[]).length > 0 && (v[0] as Record<string, unknown>)?.title);
+            if (arr) parsed = arr as { title: string; content: string[] }[];
+          }
+        } catch (_e) { /* пробуем дальше */ }
       }
-      if (!Array.isArray(parsed) || parsed.length === 0) {
+
+      if (!parsed || parsed.length === 0) {
         setAiRawResponse(reply);
-        throw new Error("Модель вернула пустой или неверный массив");
+        throw new Error("Не удалось извлечь слайды из ответа модели");
       }
       const newSlides = parsed.map((s: { title?: string; content?: string[] }) => ({
         title: s.title || "",
