@@ -1685,6 +1685,13 @@ function CoursesView({ user }: { user: User }) {
   const [showRegenerateConfirm, setShowRegenerateConfirm] = useState(false);
   const [slidesSavedNotice, setSlidesSavedNotice] = useState(false);
   const [aiProgress, setAiProgress] = useState<{ current: number; total: number } | null>(null);
+  // Свёрнутые секции редактора: content, summary, homework, cheatsheet
+  const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set(["summary", "homework", "cheatsheet"]));
+  const toggleSection = (key: string) => setCollapsedSections(prev => {
+    const next = new Set(prev);
+    if (next.has(key)) { next.delete(key); } else { next.add(key); }
+    return next;
+  });
 
   const generateSlidesFromAI = async () => {
     if (!editingLesson) return;
@@ -2271,47 +2278,84 @@ function CoursesView({ user }: { user: User }) {
                     ))}
                   </div>
                 </div>
-                <div>
-                  <label className="text-sm font-medium text-foreground mb-1.5 flex items-center gap-1.5 flex-wrap">
-                    <Icon name="BookOpen" size={13} />Основной контент
-                    <span className="text-xs font-normal text-muted-foreground">(только для тренера)</span>
-                    <span className="ml-auto flex items-center gap-1 text-xs cursor-help group relative" style={{ color: "#F4720B" }}>
-                      <Icon name="HelpCircle" size={13} />
-                      <span className="hidden group-hover:block absolute right-0 top-5 z-50 w-64 p-3 rounded-xl text-xs text-foreground leading-relaxed shadow-lg"
-                        style={{ background: "white", border: "1.5px solid #E0E5EF" }}>
-                        Чтобы создать слайды презентации из этого текста — добавьте метки:<br />
-                        <code className="block mt-1.5 p-1.5 rounded text-[11px]" style={{ background: "#F0F3F8" }}>
-                          [СЛАЙД: Заголовок]<br />
-                          - Тезис 1<br />
-                          - Тезис 2<br />
-                          [/СЛАЙД]
-                        </code>
+                {/* ── Основной контент ── */}
+                <div className="rounded-xl overflow-hidden" style={{ border: "1.5px solid #E0E5EF" }}>
+                  <button type="button" onClick={() => toggleSection("content")}
+                    className="w-full flex items-center justify-between px-3 py-2.5 transition-colors hover:bg-gray-50"
+                    style={{ background: "#F8F9FB" }}>
+                    <span className="flex items-center gap-1.5 text-sm font-medium text-foreground">
+                      <Icon name="BookOpen" size={13} />Основной контент
+                      <span className="text-xs font-normal text-muted-foreground">(только для тренера)</span>
+                      <span className="flex items-center gap-1 text-xs cursor-help group relative ml-1" style={{ color: "#F4720B" }}>
+                        <Icon name="HelpCircle" size={13} />
+                        <span className="hidden group-hover:block absolute left-0 top-5 z-50 w-64 p-3 rounded-xl text-xs text-foreground leading-relaxed shadow-lg"
+                          style={{ background: "white", border: "1.5px solid #E0E5EF" }}>
+                          Выделите текст мышью — появится панель для создания слайдов.
+                        </span>
                       </span>
                     </span>
-                  </label>
-                  <MarkdownEditor value={lessonContent} onChange={setLessonContent} rows={6} placeholder="Конспект занятия, сценарий, методические заметки..." showSlideButtons />
+                    <Icon name={collapsedSections.has("content") ? "ChevronDown" : "ChevronUp"} size={15} className="text-muted-foreground" />
+                  </button>
+                  {!collapsedSections.has("content") && (
+                    <div className="p-2">
+                      <MarkdownEditor value={lessonContent} onChange={setLessonContent} rows={6} placeholder="Конспект занятия, сценарий, методические заметки..." showSlideButtons />
+                    </div>
+                  )}
                 </div>
-                <div>
-                  <label className="text-sm font-medium text-foreground mb-1.5 block flex items-center gap-1.5">
-                    <Icon name="List" size={13} style={{ color: "#1B2A4A" }} />Опорный конспект
-                    <span className="text-xs font-normal text-muted-foreground">(видит ученик)</span>
-                  </label>
-                  <MarkdownEditor value={lessonSummary} onChange={setLessonSummary} rows={4} placeholder="Ключевые тезисы, выводы, структура урока для ученика..." />
+
+                {/* ── Опорный конспект ── */}
+                <div className="rounded-xl overflow-hidden" style={{ border: "1.5px solid #D0D8EA" }}>
+                  <button type="button" onClick={() => toggleSection("summary")}
+                    className="w-full flex items-center justify-between px-3 py-2.5 transition-colors hover:bg-blue-50"
+                    style={{ background: "#EEF1F7" }}>
+                    <span className="flex items-center gap-1.5 text-sm font-medium text-foreground">
+                      <Icon name="List" size={13} style={{ color: "#1B2A4A" }} />Опорный конспект
+                      <span className="text-xs font-normal text-muted-foreground">(видит ученик)</span>
+                    </span>
+                    <Icon name={collapsedSections.has("summary") ? "ChevronDown" : "ChevronUp"} size={15} className="text-muted-foreground" />
+                  </button>
+                  {!collapsedSections.has("summary") && (
+                    <div className="p-2" style={{ background: "#F4F6FB" }}>
+                      <MarkdownEditor value={lessonSummary} onChange={setLessonSummary} rows={4} placeholder="Ключевые тезисы, выводы, структура урока для ученика..." />
+                    </div>
+                  )}
                 </div>
+
+                {/* ── Домашнее задание ── */}
                 {lessonHasHomework && (
-                  <div>
-                    <label className="text-sm font-medium text-foreground mb-1.5 block flex items-center gap-1.5">
-                      <Icon name="FileText" size={13} style={{ color: "#F4720B" }} />Домашнее задание
-                    </label>
-                    <MarkdownEditor value={lessonHomework} onChange={setLessonHomework} rows={3} placeholder="Задание для самостоятельного выполнения..." />
+                  <div className="rounded-xl overflow-hidden" style={{ border: "1.5px solid #FDDCB5" }}>
+                    <button type="button" onClick={() => toggleSection("homework")}
+                      className="w-full flex items-center justify-between px-3 py-2.5 transition-colors"
+                      style={{ background: "#FFF3E8" }}>
+                      <span className="flex items-center gap-1.5 text-sm font-medium text-foreground">
+                        <Icon name="FileText" size={13} style={{ color: "#F4720B" }} />Домашнее задание
+                      </span>
+                      <Icon name={collapsedSections.has("homework") ? "ChevronDown" : "ChevronUp"} size={15} className="text-muted-foreground" />
+                    </button>
+                    {!collapsedSections.has("homework") && (
+                      <div className="p-2" style={{ background: "#FFFBF5" }}>
+                        <MarkdownEditor value={lessonHomework} onChange={setLessonHomework} rows={3} placeholder="Задание для самостоятельного выполнения..." />
+                      </div>
+                    )}
                   </div>
                 )}
-                <div>
-                  <label className="text-sm font-medium text-foreground mb-1.5 block flex items-center gap-1.5">
-                    <Icon name="Lightbulb" size={13} style={{ color: "#059669" }} />Шпаргалка
-                    <span className="text-xs font-normal text-muted-foreground">(готовые формулы и фразы)</span>
-                  </label>
-                  <MarkdownEditor value={lessonCheatsheet} onChange={setLessonCheatsheet} rows={3} placeholder="Готовые фразы, таблицы, алгоритмы для практики..." />
+
+                {/* ── Шпаргалка ── */}
+                <div className="rounded-xl overflow-hidden" style={{ border: "1.5px solid #A7F3D0" }}>
+                  <button type="button" onClick={() => toggleSection("cheatsheet")}
+                    className="w-full flex items-center justify-between px-3 py-2.5 transition-colors"
+                    style={{ background: "#ECFDF5" }}>
+                    <span className="flex items-center gap-1.5 text-sm font-medium text-foreground">
+                      <Icon name="Lightbulb" size={13} style={{ color: "#059669" }} />Шпаргалка
+                      <span className="text-xs font-normal text-muted-foreground">(готовые формулы и фразы)</span>
+                    </span>
+                    <Icon name={collapsedSections.has("cheatsheet") ? "ChevronDown" : "ChevronUp"} size={15} className="text-muted-foreground" />
+                  </button>
+                  {!collapsedSections.has("cheatsheet") && (
+                    <div className="p-2" style={{ background: "#F0FFF8" }}>
+                      <MarkdownEditor value={lessonCheatsheet} onChange={setLessonCheatsheet} rows={3} placeholder="Готовые фразы, таблицы, алгоритмы для практики..." />
+                    </div>
+                  )}
                 </div>
 
                 {/* Блок Презентация */}
