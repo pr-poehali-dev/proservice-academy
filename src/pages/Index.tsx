@@ -1001,50 +1001,7 @@ function MarkdownEditor({ value, onChange, rows = 4, placeholder = "", style, sh
           <Icon name="Table" size={13} />
           Таблица
         </button>
-        {showSlideButtons && (
-          <>
-            <div className="w-px h-5 mx-0.5" style={{ background: "#E0E5EF" }} />
-            {/* Открывающий тег — вставляет [СЛАЙД: ...] в позицию курсора */}
-            <button type="button"
-              onClick={() => {
-                const el = textareaRef.current;
-                if (!el) return;
-                const pos = el.selectionStart;
-                const tag = "[СЛАЙД: Заголовок]";
-                const newVal = value.slice(0, pos) + tag + value.slice(pos);
-                onChange(newVal);
-                setTimeout(() => {
-                  el.focus();
-                  const titleStart = pos + "[СЛАЙД: ".length;
-                  el.setSelectionRange(titleStart, titleStart + "Заголовок".length);
-                }, 0);
-              }}
-              className="flex items-center gap-1 px-2.5 h-7 rounded-lg text-xs font-medium transition-all hover:opacity-90"
-              style={{ background: "#1B2A4A", color: "white" }}
-              title="Вставить открывающий тег слайда [СЛАЙД: Заголовок]">
-              [СЛАЙД
-            </button>
-            {/* Закрывающий тег — вставляет [/СЛАЙД] в позицию курсора */}
-            <button type="button"
-              onClick={() => {
-                const el = textareaRef.current;
-                if (!el) return;
-                const pos = el.selectionStart;
-                const tag = "[/СЛАЙД]";
-                const newVal = value.slice(0, pos) + tag + value.slice(pos);
-                onChange(newVal);
-                setTimeout(() => {
-                  el.focus();
-                  el.setSelectionRange(pos + tag.length, pos + tag.length);
-                }, 0);
-              }}
-              className="flex items-center gap-1 px-2.5 h-7 rounded-lg text-xs font-medium transition-all hover:opacity-90"
-              style={{ background: "#374151", color: "white" }}
-              title="Вставить закрывающий тег [/СЛАЙД]">
-              /СЛАЙД]
-            </button>
-          </>
-        )}
+
         <button type="button" onClick={() => setShowPasteHint(v => !v)}
           className="flex items-center gap-1 px-2 h-7 rounded-lg text-xs font-medium transition-all hover:bg-gray-200 ml-auto"
           style={{ background: "#F0F3F8", color: "#6B7280" }}
