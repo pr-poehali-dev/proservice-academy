@@ -1560,7 +1560,7 @@ function CoursesView({ user }: { user: User }) {
   const [viewingLesson, setViewingLesson] = useState<Lesson | null>(null);
 
   // Слайды презентации
-  const [lessonSlides, setLessonSlides] = useState<{ id?: number; title: string; content: string[] }[]>([]);
+  const [lessonSlides, setLessonSlides] = useState<{ id?: number; title: string; content: string[]; bullets: string[] }[]>([]);
   const [slidesLoading, setSlidesLoading] = useState(false);
   const [aiGenerating, setAiGenerating] = useState(false);
   const [aiError, setAiError] = useState("");
@@ -1568,7 +1568,7 @@ function CoursesView({ user }: { user: User }) {
   const [slidesSaving, setSlidesSaving] = useState(false);
 
   const addSlide = () => {
-    setLessonSlides(prev => [...prev, { title: "", content: [""] }]);
+    setLessonSlides(prev => [...prev, { title: "", content: [""], bullets: [] }]);
     setSlidesDirty(true);
   };
 
@@ -1601,7 +1601,9 @@ function CoursesView({ user }: { user: User }) {
   const saveSlides = async (lessonId: number) => {
     setSlidesSaving(true);
     try {
-      await API.apiSaveSlidesBatch(lessonId, lessonSlides.filter(s => s.title.trim() || s.content.some(c => c.trim())));
+      await API.apiSaveSlidesBatch(lessonId, lessonSlides
+        .filter(s => s.title.trim() || s.content.some(c => c.trim()) || s.bullets.some(b => b.trim()))
+        .map(s => ({ title: s.title, content: [...s.content, ...s.bullets.map(b => `• ${b}`)] })));
       setSlidesDirty(false);
       setSlidesSavedNotice(true);
       setTimeout(() => setSlidesSavedNotice(false), 2500);
@@ -1634,18 +1636,19 @@ function CoursesView({ user }: { user: User }) {
 
     const newSlides = blocks.map(match => {
       const title = match[1].trim();
-      const body = match[2];
-      const content = body
-        .split(/\n/)
-        .map(l => l.replace(/^[-•*]\s*/, "").trim())
-        .filter(l => l.length > 0);
-      return { title, content };
+      const lines = match[2].split(/\n/).map(l => l.trim()).filter(l => l.length > 0);
+      const bullets = lines.filter(l => /^[-•*]/.test(l)).map(l => l.replace(/^[-•*]\s*/, ""));
+      const content = lines.filter(l => !/^[-•*]/.test(l));
+      return { title, content, bullets };
     });
 
     setLessonSlides(newSlides);
     setSlidesDirty(false);
     try {
-      await API.apiSaveSlidesBatch(editingLesson.id, newSlides);
+      await API.apiSaveSlidesBatch(editingLesson.id, newSlides.map(s => ({
+        title: s.title,
+        content: [...s.content, ...s.bullets.map(b => `• ${b}`)],
+      })));
       setSlidesSavedNotice(true);
       setTimeout(() => setSlidesSavedNotice(false), 2500);
     } catch (_e) {
@@ -1670,7 +1673,12 @@ function CoursesView({ user }: { user: User }) {
     setAiError("");
     API.apiGetSlides(lesson.id).then(raw => {
       const active = (raw as API.SlideData[]).filter(s => s.title !== '__deleted__');
-      setLessonSlides(active.map(s => ({ id: s.id, title: s.title, content: Array.isArray(s.content) ? s.content : [] })));
+      setLessonSlides(active.map(s => {
+        const arr: string[] = Array.isArray(s.content) ? s.content : [];
+        const bullets = arr.filter(l => l.startsWith("• ")).map(l => l.slice(2));
+        const content = arr.filter(l => !l.startsWith("• "));
+        return { id: s.id, title: s.title, content, bullets };
+      }));
     }).catch(() => {}).finally(() => setSlidesLoading(false));
   };
 
@@ -3656,7 +3664,7 @@ function Watermark({ name }: { name: string }) {
 }
 
 // ─── Presentation Mode ────────────────────────────────────────────────────────
-type PresentSlide = { title: string; content: string[] };
+type PresentSlide = { title: string; content: string[]; bullets: string[] };
 
 function PresentationMode({ onExit }: { onExit: () => void }) {
   const [courses, setCourses] = useState<Course[]>([]);
@@ -3713,7 +3721,14 @@ function PresentationMode({ onExit }: { onExit: () => void }) {
     setDbSlides(null);
     API.apiGetSlides(selectedLessonId).then(raw => {
       const active = (raw as API.SlideData[]).filter(s => s.title !== '__deleted__' && s.title.trim());
-      setDbSlides(active.map(s => ({ title: s.title, content: Array.isArray(s.content) ? s.content : [] })));
+      setDbSlides(active.map(s => {
+        const arr: string[] = Array.isArray(s.content) ? s.content : [];
+        const bullets = arr.filter(l => l.startsWith("• ") || l.startsWith("→ ")).map(l => l.replace(/^[•→] /, ""));
+        const content = bullets.length > 0
+          ? arr.filter(l => !l.startsWith("• ") && !l.startsWith("→ "))
+          : arr;
+        return { title: s.title, content, bullets };
+      }));
     }).catch(() => setDbSlides([])).finally(() => setLoadingSlides(false));
   }, [selectedLessonId]);
 
@@ -3883,28 +3898,42 @@ function PresentationMode({ onExit }: { onExit: () => void }) {
           /* ── Обычный слайд ── */
           <div className="flex flex-col h-full px-10 lg:px-16 py-8">
             {/* Заголовок */}
-            <div className="shrink-0 mb-6">
-              <h2 style={{ fontSize: "clamp(28px, 3.5vw, 42px)", fontWeight: 700, lineHeight: 1.25, color: textColor, marginBottom: 16 }}>
+            <div className="shrink-0 mb-5">
+              <h2 style={{ fontSize: "clamp(24px, 3vw, 38px)", fontWeight: 700, lineHeight: 1.2, color: textColor, marginBottom: 14 }}>
                 {current.title}
               </h2>
-              <div style={{ height: 3, width: 72, borderRadius: 2, background: "#FF6B2B" }} />
+              <div style={{ height: 3, width: 60, borderRadius: 2, background: "#FF6B2B" }} />
             </div>
 
-            {/* Тезисы */}
-            <div className="flex-1 flex flex-col justify-center space-y-4 overflow-auto">
-              {(current.content || []).filter(l => l.trim()).length === 0 ? (
-                <p style={{ color: darkTheme ? "rgba(255,255,255,0.3)" : "rgba(0,0,0,0.25)", fontSize: 18, fontStyle: "italic" }}>
-                  Нет тезисов
+            {/* Контент */}
+            <div className="flex-1 flex flex-col justify-center gap-4 overflow-auto">
+              {/* Абзацы */}
+              {(current.content || []).filter(l => l.trim()).map((para, i) => (
+                <p key={`p-${i}`} style={{ fontSize: "clamp(15px, 1.8vw, 19px)", lineHeight: 1.65, color: darkTheme ? "#c8d4e8" : "#444" }}>
+                  {para}
                 </p>
-              ) : (
-                (current.content || []).filter(l => l.trim()).map((line, i) => (
-                  <div key={i} className="flex items-start gap-4">
-                    <span className="shrink-0 mt-1" style={{ color: "#FF6B2B", fontSize: 22, fontWeight: 700, lineHeight: 1 }}>→</span>
-                    <span style={{ fontSize: "clamp(16px, 2vw, 21px)", lineHeight: 1.55, color: darkTheme ? "#dde4f0" : "#333" }}>
-                      {line}
-                    </span>
-                  </div>
-                ))
+              ))}
+
+              {/* Разделитель если есть и абзацы и пункты */}
+              {(current.content || []).filter(l => l.trim()).length > 0 && (current.bullets || []).filter(l => l.trim()).length > 0 && (
+                <div style={{ height: 1, background: darkTheme ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.08)", margin: "4px 0" }} />
+              )}
+
+              {/* Пункты с маркерами */}
+              {(current.bullets || []).filter(l => l.trim()).map((line, i) => (
+                <div key={`b-${i}`} className="flex items-start gap-3">
+                  <span className="shrink-0 mt-0.5" style={{ color: "#FF6B2B", fontSize: 20, fontWeight: 700, lineHeight: 1.4 }}>→</span>
+                  <span style={{ fontSize: "clamp(15px, 1.8vw, 19px)", lineHeight: 1.6, color: darkTheme ? "#dde4f0" : "#333" }}>
+                    {line}
+                  </span>
+                </div>
+              ))}
+
+              {/* Если совсем пусто */}
+              {(current.content || []).filter(l => l.trim()).length === 0 && (current.bullets || []).filter(l => l.trim()).length === 0 && (
+                <p style={{ color: darkTheme ? "rgba(255,255,255,0.25)" : "rgba(0,0,0,0.2)", fontSize: 17, fontStyle: "italic" }}>
+                  Нет содержимого
+                </p>
               )}
             </div>
           </div>
