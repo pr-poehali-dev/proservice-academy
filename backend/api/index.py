@@ -562,4 +562,50 @@ def handler(event: dict, context) -> dict:
         conn.close()
         return ok({'ok': True})
 
+    # ── STUDENT STATS ──────────────────────────────────────────────────────────
+    if path.startswith('/student-stats/') and method == 'GET':
+        uid = path.split('/')[2]
+        conn = db()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        # Уроков пройдено
+        cur.execute("SELECT COUNT(*) as cnt FROM psa_lesson_progress WHERE user_id=%s AND completed=true", (uid,))
+        lessons_done = cur.fetchone()['cnt']
+        # Заданий сдано (status = 'checked' или 'revision' — т.е. сданы тренеру)
+        cur.execute("SELECT COUNT(*) as cnt FROM psa_homeworks WHERE student_id=%s AND status != 'deleted'", (uid,))
+        homeworks_submitted = cur.fetchone()['cnt']
+        # Средняя оценка
+        cur.execute("SELECT AVG(grade) as avg FROM psa_homeworks WHERE student_id=%s AND grade IS NOT NULL AND status != 'deleted'", (uid,))
+        avg_row = cur.fetchone()
+        avg_grade = round(float(avg_row['avg']), 1) if avg_row and avg_row['avg'] else 0
+        # Прогресс: пройденные уроки / все уроки опубликованных курсов
+        cur.execute("""
+            SELECT COUNT(*) as total FROM psa_lessons l
+            JOIN psa_courses c ON c.id = l.course_id
+            WHERE c.title != '__deleted__' AND l.status = 'published'
+        """)
+        total_lessons = cur.fetchone()['total'] or 0
+        progress_pct = round(lessons_done * 100 / total_lessons) if total_lessons > 0 else 0
+        # Следующий непройденный урок
+        cur.execute("""
+            SELECT l.id, l.title, l.duration, l.has_homework, c.title as course_title, l.sort_order
+            FROM psa_lessons l
+            JOIN psa_courses c ON c.id = l.course_id
+            WHERE c.title != '__deleted__'
+              AND l.status = 'published'
+              AND l.id NOT IN (
+                SELECT lesson_id FROM psa_lesson_progress WHERE user_id=%s AND completed=true
+              )
+            ORDER BY c.sort_order, c.id, l.sort_order, l.id
+            LIMIT 1
+        """, (uid,))
+        next_lesson = cur.fetchone()
+        conn.close()
+        return ok({
+            'lessons_done': lessons_done,
+            'homeworks_submitted': homeworks_submitted,
+            'avg_grade': avg_grade,
+            'progress_pct': progress_pct,
+            'next_lesson': dict(next_lesson) if next_lesson else None,
+        })
+
     return err('Not found', 404)

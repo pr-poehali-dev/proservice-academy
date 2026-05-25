@@ -555,6 +555,18 @@ function TrainerDashboard() {
 
 // ─── Student Dashboard ────────────────────────────────────────────────────────
 function StudentDashboard({ user, notifications, onMarkRead }: { user: User; notifications: Notification[]; onMarkRead: () => void }) {
+  const [stats, setStats] = useState<API.StudentStats | null>(null);
+
+  useEffect(() => {
+    API.apiGetStudentStats(user.id).then(setStats).catch(() => {});
+  }, [user.id]);
+
+  const lessonsDone = stats?.lessons_done ?? 0;
+  const homeworksSubmitted = stats?.homeworks_submitted ?? 0;
+  const avgGrade = stats?.avg_grade ?? 0;
+  const progressPct = stats?.progress_pct ?? 0;
+  const nextLesson = stats?.next_lesson ?? null;
+
   return (
     <div className="animate-fade-in space-y-6">
       <div className="rounded-2xl p-6" style={{ background: "linear-gradient(135deg, #1B2A4A 0%, #243558 100%)" }}>
@@ -564,25 +576,25 @@ function StudentDashboard({ user, notifications, onMarkRead }: { user: User; not
           </div>
           <div>
             <h1 className="text-white text-xl font-bold">{user.name}</h1>
-            <p className="text-white/60 text-sm">Мастер-приёмщик • {user.coursesCompleted} курса завершено</p>
+            <p className="text-white/60 text-sm">Ученик</p>
           </div>
         </div>
         <div>
           <div className="flex justify-between text-sm mb-2">
             <span className="text-white/70">Общий прогресс обучения</span>
-            <span className="text-white font-bold">{user.progress}%</span>
+            <span className="text-white font-bold">{progressPct}%</span>
           </div>
           <div className="h-3 rounded-full" style={{ background: "rgba(255,255,255,0.15)" }}>
-            <div className="h-3 rounded-full transition-all duration-1000" style={{ width: `${user.progress}%`, background: "linear-gradient(90deg, #F4720B, #FF9A3E)" }} />
+            <div className="h-3 rounded-full transition-all duration-1000" style={{ width: `${progressPct}%`, background: "linear-gradient(90deg, #F4720B, #FF9A3E)" }} />
           </div>
         </div>
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
         {[
-          { label: "Уроков пройдено", value: "7", icon: "CheckCircle", color: "#059669", light: "#ECFDF5" },
-          { label: "Заданий сдано", value: "5", icon: "FileCheck", color: "#F4720B", light: "#FFF3E8" },
-          { label: "Средняя оценка", value: "4.8", icon: "Star", color: "#EAB308", light: "#FEFCE8" },
+          { label: "Уроков пройдено", value: String(lessonsDone), icon: "CheckCircle", color: "#059669", light: "#ECFDF5" },
+          { label: "Заданий сдано", value: String(homeworksSubmitted), icon: "FileCheck", color: "#F4720B", light: "#FFF3E8" },
+          { label: "Средняя оценка", value: avgGrade > 0 ? String(avgGrade) : "—", icon: "Star", color: "#EAB308", light: "#FEFCE8" },
         ].map(stat => (
           <div key={stat.label} className="stat-card">
             <div className="w-10 h-10 rounded-xl flex items-center justify-center mb-3" style={{ background: stat.light }}>
@@ -629,17 +641,27 @@ function StudentDashboard({ user, notifications, onMarkRead }: { user: User; not
 
       <div className="bg-white rounded-2xl p-6 border border-border/50">
         <h3 className="font-bold text-foreground mb-4">Продолжить обучение</h3>
-        <div className="flex items-start gap-4 p-4 rounded-xl hover-lift cursor-pointer" style={{ background: "#F8F9FB", border: "2px solid #EEF1F7" }}>
-          <div className="w-12 h-12 rounded-xl flex items-center justify-center shrink-0" style={{ background: "#FFF3E8" }}>
-            <Icon name="PlayCircle" size={24} style={{ color: "#F4720B" }} />
+        {nextLesson ? (
+          <div className="flex items-start gap-4 p-4 rounded-xl hover-lift cursor-pointer" style={{ background: "#F8F9FB", border: "2px solid #EEF1F7" }}>
+            <div className="w-12 h-12 rounded-xl flex items-center justify-center shrink-0" style={{ background: "#FFF3E8" }}>
+              <Icon name="PlayCircle" size={24} style={{ color: "#F4720B" }} />
+            </div>
+            <div className="flex-1">
+              <div className="font-semibold text-foreground">{nextLesson.title}</div>
+              <div className="text-sm text-muted-foreground mt-0.5">{nextLesson.course_title}</div>
+              <div className="text-xs mt-2 font-medium" style={{ color: "#F4720B" }}>
+                {nextLesson.duration}{nextLesson.has_homework ? " · Есть домашнее задание" : ""}
+              </div>
+            </div>
+            <Icon name="ChevronRight" size={20} className="text-muted-foreground shrink-0 mt-1" />
           </div>
-          <div className="flex-1">
-            <div className="font-semibold text-foreground">Работа с клиентскими возражениями</div>
-            <div className="text-sm text-muted-foreground mt-0.5">Урок 3 · Мастер-приёмщик: базовый курс</div>
-            <div className="text-xs mt-2 font-medium" style={{ color: "#F4720B" }}>50 минут · Есть домашнее задание</div>
+        ) : stats === null ? (
+          <div className="text-sm text-muted-foreground">Загрузка...</div>
+        ) : (
+          <div className="text-sm text-muted-foreground p-4 rounded-xl" style={{ background: "#F8F9FB" }}>
+            Курсы пока не назначены
           </div>
-          <Icon name="ChevronRight" size={20} className="text-muted-foreground shrink-0 mt-1" />
-        </div>
+        )}
       </div>
     </div>
   );

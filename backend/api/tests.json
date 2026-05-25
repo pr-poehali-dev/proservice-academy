@@ -16,6 +16,15 @@
       "body": {"_method": "GET", "_path": "/courses"},
       "expectedStatus": 200,
       "bodyMatcher": "partial"
+    },
+    {
+      "name": "Get student stats",
+      "method": "POST",
+      "path": "/",
+      "body": {"_method": "GET", "_path": "/student-stats/2"},
+      "expectedStatus": 200,
+      "expectedBody": {"lessons_done": 0, "homeworks_submitted": 0, "avg_grade": 0, "progress_pct": 0},
+      "bodyMatcher": "partial"
     }
   ]
 }

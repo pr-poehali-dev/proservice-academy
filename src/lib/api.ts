@@ -103,6 +103,17 @@ export const apiPostMessage = (topicId: number, data: { author_id: number; text:
 export const apiLikePost = (postId: number, userId: number) =>
   post<Record<string, unknown>>(`/forum/posts/${postId}/like`, { user_id: userId });
 
+// Student Stats
+export interface StudentStats {
+  lessons_done: number;
+  homeworks_submitted: number;
+  avg_grade: number;
+  progress_pct: number;
+  next_lesson: { id: number; title: string; duration: string; has_homework: boolean; course_title: string } | null;
+}
+export const apiGetStudentStats = (userId: number) =>
+  get<StudentStats>(`/student-stats/${userId}`);
+
 // Trainer Profile
 export const apiGetProfile = (userId: number) =>
   get<Record<string, unknown>>(`/profile/${userId}`);
