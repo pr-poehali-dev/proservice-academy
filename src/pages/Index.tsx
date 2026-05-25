@@ -3691,11 +3691,11 @@ function PresentationMode({ onExit }: { onExit: () => void }) {
     setSlideIdx(0);
   };
 
-  const bg = darkTheme ? "#1B2A4A" : "#FFFFFF";
-  const textColor = darkTheme ? "white" : "#1B2A4A";
-  const subColor = darkTheme ? "rgba(255,255,255,0.6)" : "rgba(27,42,74,0.5)";
-  const arrowBg = darkTheme ? "rgba(255,255,255,0.15)" : "rgba(27,42,74,0.08)";
-  const dotInactive = darkTheme ? "rgba(255,255,255,0.25)" : "rgba(27,42,74,0.18)";
+  const bg = darkTheme ? "#1a2340" : "#FFFFFF";
+  const textColor = darkTheme ? "#FFFFFF" : "#1a2340";
+  const subColor = darkTheme ? "rgba(255,255,255,0.55)" : "rgba(26,35,64,0.5)";
+  const arrowBg = darkTheme ? "rgba(255,255,255,0.12)" : "rgba(26,35,64,0.07)";
+  const dotInactive = darkTheme ? "rgba(255,255,255,0.22)" : "rgba(26,35,64,0.18)";
 
   const handleFullscreen = () => {
     if (!document.fullscreenElement) document.documentElement.requestFullscreen();
@@ -3824,26 +3824,54 @@ function PresentationMode({ onExit }: { onExit: () => void }) {
       </div>
 
       {/* Контент слайда */}
-      <div className="flex-1 flex flex-col items-center justify-center px-8 lg:px-16 py-10" key={slideIdx} style={{ animation: "fadeIn 0.25s ease" }}>
-        <div className="w-full max-w-4xl">
-          {current.title && (
-            <h2 className="text-3xl lg:text-4xl font-bold mb-8 leading-tight" style={{ color: slideIdx === 0 ? "#F4720B" : textColor }}>
+      <div className="flex-1 overflow-hidden" key={slideIdx} style={{ animation: "fadeIn 0.3s ease" }}>
+        {slideIdx === 0 ? (
+          /* ── Титульный слайд ── */
+          <div className="flex flex-col items-center justify-center h-full text-center px-12">
+            <div className="mb-6 text-sm font-semibold uppercase tracking-widest px-5 py-2 rounded-full"
+              style={{ background: "rgba(255,107,43,0.15)", color: "#FF6B2B", border: "1px solid rgba(255,107,43,0.3)" }}>
+              {selectedCourse?.title}
+            </div>
+            <h1 style={{ fontSize: "clamp(36px, 5vw, 56px)", fontWeight: 800, lineHeight: 1.2, color: textColor, marginBottom: 24 }}>
               {current.title}
-            </h2>
-          )}
-          <div className="space-y-4">
-            {current.content.filter(l => l.trim()).map((line, i) => (
-              <div key={i} className="flex items-start gap-4 animate-fade-in">
-                <span className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold shrink-0 mt-0.5" style={{ background: "#F4720B", color: "white" }}>
-                  {i + 1}
-                </span>
-                <span className="text-xl lg:text-2xl leading-relaxed pt-0.5" style={{ color: darkTheme ? "rgba(255,255,255,0.9)" : "rgba(27,42,74,0.85)" }}>
-                  {line}
-                </span>
-              </div>
-            ))}
+            </h1>
+            <div style={{ width: 80, height: 4, borderRadius: 2, background: "#FF6B2B", marginBottom: 20 }} />
+            {(current.content || []).filter(l => l.trim()).length > 0 && (
+              <p style={{ fontSize: 20, color: darkTheme ? "#b0bcd4" : "#555", maxWidth: 600 }}>
+                {current.content.filter(l => l.trim()).join(" · ")}
+              </p>
+            )}
           </div>
-        </div>
+        ) : (
+          /* ── Обычный слайд ── */
+          <div className="flex flex-col h-full px-10 lg:px-16 py-8">
+            {/* Заголовок */}
+            <div className="shrink-0 mb-6">
+              <h2 style={{ fontSize: "clamp(28px, 3.5vw, 42px)", fontWeight: 700, lineHeight: 1.25, color: textColor, marginBottom: 16 }}>
+                {current.title}
+              </h2>
+              <div style={{ height: 3, width: 72, borderRadius: 2, background: "#FF6B2B" }} />
+            </div>
+
+            {/* Тезисы */}
+            <div className="flex-1 flex flex-col justify-center space-y-4 overflow-auto">
+              {(current.content || []).filter(l => l.trim()).length === 0 ? (
+                <p style={{ color: darkTheme ? "rgba(255,255,255,0.3)" : "rgba(0,0,0,0.25)", fontSize: 18, fontStyle: "italic" }}>
+                  Нет тезисов
+                </p>
+              ) : (
+                (current.content || []).filter(l => l.trim()).map((line, i) => (
+                  <div key={i} className="flex items-start gap-4">
+                    <span className="shrink-0 mt-1" style={{ color: "#FF6B2B", fontSize: 22, fontWeight: 700, lineHeight: 1 }}>→</span>
+                    <span style={{ fontSize: "clamp(16px, 2vw, 21px)", lineHeight: 1.55, color: darkTheme ? "#dde4f0" : "#333" }}>
+                      {line}
+                    </span>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Нижняя навигация */}
