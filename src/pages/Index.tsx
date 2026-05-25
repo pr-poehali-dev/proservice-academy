@@ -1572,128 +1572,41 @@ function CoursesView({ user }: { user: User }) {
   const generateSlidesFromAI = async () => {
     if (!editingLesson) return;
     const text = lessonContent.trim();
-    if (!text) { setAiError("Сначала заполните поле «Основной контент»"); return; }
-    setAiGenerating(true);
     setAiError("");
     setAiRawResponse("");
-    try {
-      const { callAi: ai } = await import("@/lib/ai");
 
-      // System: жёсткая инструкция формата
-      const system = `You output ONLY a JSON array of slides. Nothing else. No explanation. No wrapper object.
-Format: [{"title":"...","content":["...","...","..."]}]
-Rules: title in Russian, content in Russian, 3-5 items per slide, max 10 slides.`;
-
-      // User: текст + пример вывода
-      const prompt = `Convert this educational text into presentation slides in Russian.
-
-OUTPUT EXAMPLE (copy this exact structure):
-[{"title":"Первый слайд","content":["Тезис один","Тезис два","Тезис три"]},{"title":"Второй слайд","content":["Тезис один","Тезис два"]}]
-
-REQUIREMENTS:
-- 8-10 slides
-- All text in Russian
-- title: short (max 6 words)
-- content: 3-5 complete sentences per slide
-- First slide: lesson topic + 2-3 goals
-- Last slide title must be "Главное из урока"
-- Output starts with [ and ends with ]
-
-TEXT:
-${text}`;
-
-      const reply = await ai(prompt, system, 0.1, { num_predict: 4096 });
-      console.log("[AI slides] raw reply:", reply);
-
-      // ── Парсер: ищем слайды в любой структуре ──────────────────────────────
-      type RawSlide = { title?: string; id?: string; content?: unknown; text?: string; points?: unknown; items?: unknown; bullets?: unknown };
-
-      const normalizeContent = (s: RawSlide): string[] => {
-        const skip = new Set(["title", "id", "type", "url", "data"]);
-        const obj = s as Record<string, unknown>;
-
-        // Сначала ищем явные массивы (content, points, items, bullets...)
-        for (const [key, val] of Object.entries(obj)) {
-          if (skip.has(key)) continue;
-          if (Array.isArray(val) && val.length > 0) {
-            const lines = val.flatMap((c: unknown) => {
-              if (typeof c === "string") return c.trim() ? [c.trim()] : [];
-              if (c && typeof c === "object") {
-                const t = (c as Record<string, unknown>).text;
-                if (typeof t === "string" && t.trim()) return [t.trim()];
-              }
-              return [];
-            }).filter(Boolean);
-            if (lines.length > 0) return lines;
-          }
-        }
-
-        // Нет массивов — собираем все строковые поля (symptom, cause, consequence, phrase...)
-        const lines: string[] = [];
-        for (const [key, val] of Object.entries(obj)) {
-          if (skip.has(key)) continue;
-          if (typeof val === "string" && val.trim()) lines.push(val.trim());
-        }
-        return lines;
-      };
-
-      const extractTitle = (s: RawSlide): string =>
-        (s.title || s.id || "").toString().trim();
-
-      // Рекурсивно ищем массив объектов с заголовком
-      const findSlideArray = (val: unknown, depth = 0): RawSlide[] | null => {
-        if (depth > 4) return null;
-        if (Array.isArray(val) && val.length > 0) {
-          const first = val[0] as Record<string, unknown>;
-          if (first && (first.title || first.id)) return val as RawSlide[];
-          // Ищем вглубь каждого элемента
-          for (const item of val) {
-            const found = findSlideArray(item, depth + 1);
-            if (found) return found;
-          }
-        }
-        if (val && typeof val === "object" && !Array.isArray(val)) {
-          for (const v of Object.values(val as Record<string, unknown>)) {
-            const found = findSlideArray(v, depth + 1);
-            if (found) return found;
-          }
-        }
-        return null;
-      };
-
-      let parsed: RawSlide[] | null = null;
-      try {
-        const cleaned = reply.trim().replace(/```json|```/g, "").trim();
-        const raw = JSON.parse(cleaned);
-        parsed = findSlideArray(raw);
-      } catch (_e) {
-        // JSON невалидный — пробуем вырезать массив из текста
-        const m = reply.match(/\[[\s\S]*\]/);
-        if (m) {
-          try { parsed = findSlideArray(JSON.parse(m[0])); } catch (_e2) { /* ignore */ }
-        }
-      }
-
-      if (!parsed || parsed.length === 0) {
-        setAiRawResponse(reply);
-        throw new Error("Не удалось извлечь слайды из ответа модели");
-      }
-
-      const newSlides = parsed
-        .map(s => ({ title: extractTitle(s), content: normalizeContent(s) }))
-        .filter(s => s.title || s.content.length > 0);
-      setLessonSlides(newSlides);
-      setSlidesDirty(false);
-      // Автосохранение после генерации
-      try {
-        await API.apiSaveSlidesBatch(editingLesson.id, newSlides.filter(s => s.title.trim() || s.content.some(c => c.trim())));
-      } catch (_saveErr) {
-        setSlidesDirty(true);
-      }
-    } catch (e) {
-      setAiError(String(e));
+    if (!text) {
+      setAiError("Сначала заполните поле «Основной контент»");
+      return;
     }
-    setAiGenerating(false);
+
+    // Парсим теги [СЛАЙД: Заголовок] ... [/СЛАЙД]
+    const blocks = [...text.matchAll(/\[СЛАЙД:\s*([^\]]+)\]([\s\S]*?)\[\/СЛАЙД\]/gi)];
+
+    if (blocks.length === 0) {
+      setAiError(`В тексте урока не найдены метки слайдов.\nДобавьте в текст урока блоки формата:\n[СЛАЙД: Заголовок]\n- Тезис 1\n- Тезис 2\n[/СЛАЙД]\nИли создайте слайды вручную.`);
+      return;
+    }
+
+    const newSlides = blocks.map(match => {
+      const title = match[1].trim();
+      const body = match[2];
+      const content = body
+        .split(/\n/)
+        .map(l => l.replace(/^[-•*]\s*/, "").trim())
+        .filter(l => l.length > 0);
+      return { title, content };
+    });
+
+    setLessonSlides(newSlides);
+    setSlidesDirty(false);
+    try {
+      await API.apiSaveSlidesBatch(editingLesson.id, newSlides);
+      setSlidesSavedNotice(true);
+      setTimeout(() => setSlidesSavedNotice(false), 2500);
+    } catch (_e) {
+      setSlidesDirty(true);
+    }
   };
 
   const openEditLesson = (lesson: Lesson) => {
@@ -2183,9 +2096,22 @@ ${text}`;
                   </div>
                 </div>
                 <div>
-                  <label className="text-sm font-medium text-foreground mb-1.5 block flex items-center gap-1.5">
+                  <label className="text-sm font-medium text-foreground mb-1.5 flex items-center gap-1.5 flex-wrap">
                     <Icon name="BookOpen" size={13} />Основной контент
                     <span className="text-xs font-normal text-muted-foreground">(только для тренера)</span>
+                    <span className="ml-auto flex items-center gap-1 text-xs cursor-help group relative" style={{ color: "#F4720B" }}>
+                      <Icon name="HelpCircle" size={13} />
+                      <span className="hidden group-hover:block absolute right-0 top-5 z-50 w-64 p-3 rounded-xl text-xs text-foreground leading-relaxed shadow-lg"
+                        style={{ background: "white", border: "1.5px solid #E0E5EF" }}>
+                        Чтобы создать слайды презентации из этого текста — добавьте метки:<br />
+                        <code className="block mt-1.5 p-1.5 rounded text-[11px]" style={{ background: "#F0F3F8" }}>
+                          [СЛАЙД: Заголовок]<br />
+                          - Тезис 1<br />
+                          - Тезис 2<br />
+                          [/СЛАЙД]
+                        </code>
+                      </span>
+                    </span>
                   </label>
                   <MarkdownEditor value={lessonContent} onChange={setLessonContent} rows={4} placeholder="Конспект занятия, сценарий, методические заметки..." />
                 </div>
@@ -2223,16 +2149,16 @@ ${text}`;
                     </span>
                     <div className="flex items-center gap-2">
                       {lessonSlides.length > 0 ? (
-                        <button onClick={() => setShowRegenerateConfirm(true)} disabled={aiGenerating}
-                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all disabled:opacity-50"
+                        <button onClick={() => setShowRegenerateConfirm(true)}
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
                           style={{ background: "#1B2A4A", color: "white" }}>
-                          {aiGenerating ? <><Icon name="Loader" size={12} className="animate-spin" />Генерация...</> : <><Icon name="RefreshCw" size={12} />Перегенерировать</>}
+                          <Icon name="RefreshCw" size={12} />Пересоздать из текста
                         </button>
                       ) : (
-                        <button onClick={generateSlidesFromAI} disabled={aiGenerating}
-                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all disabled:opacity-50"
+                        <button onClick={generateSlidesFromAI}
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
                           style={{ background: "#1B2A4A", color: "white" }}>
-                          {aiGenerating ? <><Icon name="Loader" size={12} className="animate-spin" />Генерация...</> : <><Icon name="Sparkles" size={12} />Создать через AI</>}
+                          <Icon name="ScanText" size={12} />Создать из текста
                         </button>
                       )}
                       <button onClick={addSlide}
@@ -2252,10 +2178,10 @@ ${text}`;
                           className="px-3 py-1.5 rounded-lg text-xs font-medium" style={{ background: "#F0F3F8", color: "#6B7280" }}>
                           Отмена
                         </button>
-                        <button onClick={() => { setShowRegenerateConfirm(false); generateSlidesFromAI(); }} disabled={aiGenerating}
-                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-white disabled:opacity-50"
+                        <button onClick={() => { setShowRegenerateConfirm(false); generateSlidesFromAI(); }}
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-white"
                           style={{ background: "#F4720B" }}>
-                          <Icon name="Sparkles" size={12} />Да, перегенерировать
+                          <Icon name="ScanText" size={12} />Да, пересоздать
                         </button>
                       </div>
                     </div>
@@ -2263,18 +2189,11 @@ ${text}`;
 
                   {/* Ошибка AI */}
                   {aiError && (
-                    <div className="px-4 py-3 text-xs space-y-2" style={{ background: "#FEF2F2", borderTop: "1px solid #FECACA" }}>
-                      <div className="flex items-center gap-2 font-medium" style={{ color: "#DC2626" }}>
-                        <Icon name="AlertCircle" size={12} />
-                        Модель ответила некорректно. Попробуйте перегенерировать или создайте слайды вручную.
+                    <div className="px-4 py-3 text-xs space-y-1.5" style={{ background: "#FEF9EC", borderTop: "1px solid #FDE68A" }}>
+                      <div className="flex items-start gap-2 font-medium" style={{ color: "#92400E" }}>
+                        <Icon name="Info" size={13} className="shrink-0 mt-0.5" />
+                        <pre className="whitespace-pre-wrap font-sans leading-relaxed">{aiError}</pre>
                       </div>
-                      <div className="text-muted-foreground">{aiError}</div>
-                      {aiRawResponse && (
-                        <details className="mt-1">
-                          <summary className="cursor-pointer text-muted-foreground hover:text-foreground">Показать ответ модели</summary>
-                          <pre className="mt-2 p-2 rounded text-[11px] overflow-auto max-h-40 whitespace-pre-wrap" style={{ background: "#FEF2F2", color: "#7F1D1D" }}>{aiRawResponse}</pre>
-                        </details>
-                      )}
                     </div>
                   )}
 
