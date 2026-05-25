@@ -382,6 +382,7 @@ function Sidebar({ user, activeTab, setActiveTab, onLogout }: {
     { id: "courses", icon: "BookOpen", label: "Мои курсы" },
     { id: "homeworks", icon: "ClipboardCheck", label: "Задания" },
     { id: "forum", icon: "MessageSquare", label: "Форум" },
+    { id: "profile", icon: "UserCircle", label: "Мой профиль" },
   ];
   const nav = user.role === "trainer" ? trainerNav : studentNav;
 
@@ -440,6 +441,7 @@ function MobileNav({ user, activeTab, setActiveTab }: { user: User; activeTab: s
     { id: "courses", icon: "BookOpen", label: "Курсы" },
     { id: "homeworks", icon: "ClipboardCheck", label: "Задания" },
     { id: "forum", icon: "MessageSquare", label: "Форум" },
+    { id: "profile", icon: "UserCircle", label: "Профиль" },
   ];
   const nav = user.role === "trainer" ? trainerNav : studentNav;
 
@@ -2823,7 +2825,7 @@ function ProfileView({ user, onUserUpdate }: { user: User; onUserUpdate: (u: Use
               </div>
               <div>
                 <div className="font-semibold text-foreground">{displayName || user.name}</div>
-                <div className="text-sm text-muted-foreground mt-0.5">Тренер · ProService Academy</div>
+                <div className="text-sm text-muted-foreground mt-0.5">{user.role === "trainer" ? "Тренер" : "Ученик"} · ProService Academy</div>
                 <div className="text-xs text-muted-foreground mt-2">JPG, PNG до 5 МБ</div>
               </div>
             </div>
@@ -2831,7 +2833,7 @@ function ProfileView({ user, onUserUpdate }: { user: User; onUserUpdate: (u: Use
 
           {/* Основная информация */}
           <div className="bg-white rounded-2xl p-6 border border-border/50 space-y-4">
-            <h3 className="font-bold text-foreground">Информация для учеников</h3>
+            <h3 className="font-bold text-foreground">{user.role === "trainer" ? "Информация для учеников" : "Личная информация"}</h3>
             <div>
               <label className="text-sm font-medium text-foreground mb-1.5 block">Имя и фамилия</label>
               <input value={displayName} onChange={e => setDisplayName(e.target.value)}
