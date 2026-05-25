@@ -621,6 +621,304 @@ function parseLessonToSlides(lesson: { title: string; content?: string; summary?
   return slides;
 }
 
+// ─── MarkdownRenderer ─────────────────────────────────────────────────────────
+function MarkdownRenderer({ text, className = "" }: { text: string; className?: string }) {
+  if (!text) return null;
+
+  const lines = text.split("\n");
+  const elements: React.ReactNode[] = [];
+  let i = 0;
+
+  const parseInline = (s: string): React.ReactNode => {
+    // bold **...**
+    const parts = s.split(/(\*\*[^*]+\*\*)/g);
+    return parts.map((p, idx) =>
+      p.startsWith("**") && p.endsWith("**")
+        ? <strong key={idx}>{p.slice(2, -2)}</strong>
+        : p
+    );
+  };
+
+  while (i < lines.length) {
+    const line = lines[i];
+
+    // Пустая строка
+    if (!line.trim()) { i++; continue; }
+
+    // Заголовки ### / ## / #
+    const headMatch = line.match(/^(#{1,3})\s+(.+)/);
+    if (headMatch) {
+      const level = headMatch[1].length;
+      const txt = headMatch[2];
+      const cls = level === 1 ? "text-xl font-bold mt-4 mb-2" : level === 2 ? "text-lg font-bold mt-3 mb-1.5" : "text-base font-semibold mt-2 mb-1";
+      elements.push(<div key={i} className={cls}>{parseInline(txt)}</div>);
+      i++; continue;
+    }
+
+    // Таблица: строки начинающиеся с |
+    if (line.trimStart().startsWith("|")) {
+      const tableLines: string[] = [];
+      while (i < lines.length && lines[i].trimStart().startsWith("|")) {
+        tableLines.push(lines[i]);
+        i++;
+      }
+      // Фильтруем разделительные строки (|---|---|)
+      const dataRows = tableLines.filter(l => !l.match(/^\s*\|[\s\-:|]+\|\s*$/));
+      elements.push(
+        <div key={`table-${i}`} className="overflow-x-auto my-3 rounded-xl" style={{ border: "1px solid #E0E5EF" }}>
+          <table className="w-full text-sm border-collapse">
+            <tbody>
+              {dataRows.map((row, ri) => {
+                const cells = row.split("|").map(c => c.trim()).filter((_, ci, arr) => ci > 0 && ci < arr.length - 1);
+                return (
+                  <tr key={ri} style={{ borderBottom: ri < dataRows.length - 1 ? "1px solid #E0E5EF" : "none", background: ri === 0 ? "#F0F3F8" : "transparent" }}>
+                    {cells.map((cell, ci) => (
+                      ri === 0
+                        ? <th key={ci} className="px-3 py-2 text-left font-semibold text-foreground" style={{ borderRight: ci < cells.length - 1 ? "1px solid #E0E5EF" : "none" }}>{parseInline(cell)}</th>
+                        : <td key={ci} className="px-3 py-2 text-foreground" style={{ borderRight: ci < cells.length - 1 ? "1px solid #E0E5EF" : "none" }}>{parseInline(cell)}</td>
+                    ))}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      );
+      continue;
+    }
+
+    // Маркированный список
+    if (/^[-*•]\s/.test(line)) {
+      const items: string[] = [];
+      while (i < lines.length && /^[-*•]\s/.test(lines[i])) {
+        items.push(lines[i].replace(/^[-*•]\s+/, ""));
+        i++;
+      }
+      elements.push(
+        <ul key={`ul-${i}`} className="my-2 space-y-1 pl-4">
+          {items.map((it, idx) => (
+            <li key={idx} className="flex items-start gap-2">
+              <span className="mt-1.5 w-1.5 h-1.5 rounded-full shrink-0" style={{ background: "#F4720B" }} />
+              <span>{parseInline(it)}</span>
+            </li>
+          ))}
+        </ul>
+      );
+      continue;
+    }
+
+    // Нумерованный список
+    if (/^\d+\.\s/.test(line)) {
+      const items: string[] = [];
+      let num = 1;
+      while (i < lines.length && /^\d+\.\s/.test(lines[i])) {
+        items.push(lines[i].replace(/^\d+\.\s+/, ""));
+        i++; num++;
+      }
+      elements.push(
+        <ol key={`ol-${i}`} className="my-2 space-y-1 pl-4">
+          {items.map((it, idx) => (
+            <li key={idx} className="flex items-start gap-2">
+              <span className="font-semibold shrink-0 min-w-[20px]" style={{ color: "#F4720B" }}>{idx + 1}.</span>
+              <span>{parseInline(it)}</span>
+            </li>
+          ))}
+        </ol>
+      );
+      continue;
+    }
+
+    // Обычный параграф
+    elements.push(<p key={i} className="leading-relaxed mb-1">{parseInline(line)}</p>);
+    i++;
+  }
+
+  return <div className={`markdown-content ${className}`}>{elements}</div>;
+}
+
+// ─── MarkdownEditor ────────────────────────────────────────────────────────────
+interface TableModalState { rows: number; cols: number }
+
+function MarkdownEditor({ value, onChange, rows = 4, placeholder = "", style }: {
+  value: string; onChange: (v: string) => void; rows?: number; placeholder?: string; style?: React.CSSProperties;
+}) {
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const [tableModal, setTableModal] = useState<TableModalState | null>(null);
+  const [showPasteHint, setShowPasteHint] = useState(false);
+
+  const insert = (before: string, after = "", placeholder = "") => {
+    const el = textareaRef.current;
+    if (!el) return;
+    const start = el.selectionStart;
+    const end = el.selectionEnd;
+    const selected = value.slice(start, end) || placeholder;
+    const newVal = value.slice(0, start) + before + selected + after + value.slice(end);
+    onChange(newVal);
+    setTimeout(() => {
+      el.focus();
+      el.setSelectionRange(start + before.length, start + before.length + selected.length);
+    }, 0);
+  };
+
+  const insertHeading = (level: number) => {
+    const el = textareaRef.current;
+    if (!el) return;
+    const start = el.selectionStart;
+    const lineStart = value.lastIndexOf("\n", start - 1) + 1;
+    const prefix = "#".repeat(level) + " ";
+    const newVal = value.slice(0, lineStart) + prefix + value.slice(lineStart);
+    onChange(newVal);
+    setTimeout(() => { el.focus(); el.setSelectionRange(lineStart + prefix.length, lineStart + prefix.length); }, 0);
+  };
+
+  const insertList = (ordered: boolean) => {
+    const el = textareaRef.current;
+    if (!el) return;
+    const start = el.selectionStart;
+    const end = el.selectionEnd;
+    const selected = value.slice(start, end);
+    if (selected.includes("\n")) {
+      const lines = selected.split("\n");
+      const prefixed = lines.map((l, i) => (ordered ? `${i + 1}. ` : "- ") + l).join("\n");
+      const newVal = value.slice(0, start) + prefixed + value.slice(end);
+      onChange(newVal);
+    } else {
+      const prefix = ordered ? "1. " : "- ";
+      const lineStart = value.lastIndexOf("\n", start - 1) + 1;
+      const newVal = value.slice(0, lineStart) + prefix + value.slice(lineStart);
+      onChange(newVal);
+    }
+  };
+
+  const buildTable = (rows: number, cols: number) => {
+    const header = "| " + Array(cols).fill("Заголовок").map((_, i) => `Столбец ${i + 1}`).join(" | ") + " |";
+    const separator = "| " + Array(cols).fill("---").join(" | ") + " |";
+    const dataRows = Array(rows - 1).fill(null).map(() => "| " + Array(cols).fill("").join(" | ") + " |");
+    return "\n" + [header, separator, ...dataRows].join("\n") + "\n";
+  };
+
+  const handleInsertTable = () => {
+    if (!tableModal) return;
+    const { rows, cols } = tableModal;
+    const el = textareaRef.current;
+    if (!el) return;
+    const pos = el.selectionStart;
+    const newVal = value.slice(0, pos) + buildTable(rows, cols) + value.slice(pos);
+    onChange(newVal);
+    setTableModal(null);
+    setTimeout(() => { el.focus(); }, 0);
+  };
+
+  // Вставка таблицы из буфера обмена (HTML → markdown)
+  const handlePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const html = e.clipboardData.getData("text/html");
+    if (!html || !html.includes("<table")) return;
+    e.preventDefault();
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(html, "text/html");
+    const table = doc.querySelector("table");
+    if (!table) return;
+    const rows = Array.from(table.querySelectorAll("tr"));
+    const mdRows = rows.map((row, ri) => {
+      const cells = Array.from(row.querySelectorAll("td, th")).map(td => td.textContent?.trim().replace(/\|/g, "\\|") || "");
+      return "| " + cells.join(" | ") + " |";
+    });
+    if (mdRows.length === 0) return;
+    const sep = "| " + Array(mdRows[0].split("|").length - 2).fill("---").join(" | ") + " |";
+    const mdTable = "\n" + [mdRows[0], sep, ...mdRows.slice(1)].join("\n") + "\n";
+    const el = textareaRef.current!;
+    const pos = el.selectionStart;
+    onChange(value.slice(0, pos) + mdTable + value.slice(pos));
+    setShowPasteHint(false);
+  };
+
+  const btnCls = "w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold transition-all hover:bg-gray-200 text-muted-foreground hover:text-foreground";
+  const btnStyle = { background: "#F0F3F8" };
+
+  return (
+    <div className="rounded-xl overflow-hidden" style={{ border: "1.5px solid #E0E5EF" }}>
+      {/* Toolbar */}
+      <div className="flex items-center gap-1 px-2 py-1.5 flex-wrap" style={{ background: "#F8F9FB", borderBottom: "1px solid #E0E5EF" }}>
+        <button type="button" onClick={() => insertHeading(1)} className={btnCls} style={btnStyle} title="Заголовок H1">H1</button>
+        <button type="button" onClick={() => insertHeading(2)} className={btnCls} style={btnStyle} title="Заголовок H2">H2</button>
+        <button type="button" onClick={() => insertHeading(3)} className={btnCls} style={btnStyle} title="Заголовок H3">H3</button>
+        <div className="w-px h-5 mx-0.5" style={{ background: "#E0E5EF" }} />
+        <button type="button" onClick={() => insert("**", "**", "жирный текст")} className={btnCls} style={btnStyle} title="Жирный"><span style={{ fontWeight: 900 }}>B</span></button>
+        <div className="w-px h-5 mx-0.5" style={{ background: "#E0E5EF" }} />
+        <button type="button" onClick={() => insertList(false)} className={btnCls} style={btnStyle} title="Маркированный список">
+          <Icon name="List" size={13} />
+        </button>
+        <button type="button" onClick={() => insertList(true)} className={btnCls} style={btnStyle} title="Нумерованный список">
+          <Icon name="ListOrdered" size={13} />
+        </button>
+        <div className="w-px h-5 mx-0.5" style={{ background: "#E0E5EF" }} />
+        <button type="button" onClick={() => setTableModal({ rows: 3, cols: 3 })}
+          className="flex items-center gap-1 px-2 h-7 rounded-lg text-xs font-medium transition-all hover:bg-gray-200"
+          style={{ background: "#FFF3E8", color: "#F4720B", border: "1px solid #FDDCB5" }}
+          title="Вставить таблицу">
+          <Icon name="Table" size={13} />
+          Таблица
+        </button>
+        <button type="button" onClick={() => setShowPasteHint(v => !v)}
+          className="flex items-center gap-1 px-2 h-7 rounded-lg text-xs font-medium transition-all hover:bg-gray-200 ml-auto"
+          style={{ background: "#F0F3F8", color: "#6B7280" }}
+          title="Вставить таблицу из буфера (Ctrl+V)">
+          <Icon name="Clipboard" size={12} />
+          Из Word/Google Docs
+        </button>
+      </div>
+
+      {showPasteHint && (
+        <div className="px-3 py-2 text-xs text-muted-foreground flex items-center gap-2" style={{ background: "#FFFBEB", borderBottom: "1px solid #FDE68A" }}>
+          <Icon name="Info" size={12} style={{ color: "#F59E0B" }} />
+          Скопируйте таблицу в Word или Google Docs, поставьте курсор ниже и нажмите Ctrl+V — таблица вставится автоматически
+        </div>
+      )}
+
+      <textarea
+        ref={textareaRef}
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        onPaste={handlePaste}
+        placeholder={placeholder}
+        rows={rows}
+        className="w-full px-3 py-2.5 text-foreground text-sm outline-none resize-none font-mono"
+        style={{ ...style, background: "transparent", border: "none" }}
+      />
+
+      {/* Модал выбора размера таблицы */}
+      {tableModal && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center" style={{ background: "rgba(0,0,0,0.4)" }}
+          onClick={e => { if (e.target === e.currentTarget) setTableModal(null); }}>
+          <div className="bg-white rounded-2xl p-6 shadow-2xl w-72 animate-fade-in">
+            <h4 className="font-bold text-foreground mb-4">Вставить таблицу</h4>
+            <div className="grid grid-cols-2 gap-3 mb-4">
+              <div>
+                <label className="text-sm text-muted-foreground mb-1 block">Строк</label>
+                <input type="number" min={2} max={20} value={tableModal.rows}
+                  onChange={e => setTableModal(t => t ? { ...t, rows: Number(e.target.value) } : null)}
+                  className="w-full px-3 py-2 rounded-xl text-foreground text-[15px] outline-none"
+                  style={{ background: "#F8F9FB", border: "1.5px solid #E0E5EF" }} />
+              </div>
+              <div>
+                <label className="text-sm text-muted-foreground mb-1 block">Столбцов</label>
+                <input type="number" min={2} max={10} value={tableModal.cols}
+                  onChange={e => setTableModal(t => t ? { ...t, cols: Number(e.target.value) } : null)}
+                  className="w-full px-3 py-2 rounded-xl text-foreground text-[15px] outline-none"
+                  style={{ background: "#F8F9FB", border: "1.5px solid #E0E5EF" }} />
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <button onClick={() => setTableModal(null)} className="flex-1 py-2.5 rounded-xl text-sm font-medium" style={{ background: "#F0F3F8", color: "#6B7280" }}>Отмена</button>
+              <button onClick={handleInsertTable} className="flex-1 py-2.5 rounded-xl text-sm font-medium text-white" style={{ background: "#F4720B" }}>Вставить</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Login Page ───────────────────────────────────────────────────────────────
 function LoginPage({ onLogin }: { onLogin: (user: User) => void }) {
   const [email, setEmail] = useState("");
@@ -1404,7 +1702,7 @@ function CoursesView({ user }: { user: User }) {
                     <div className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wide flex items-center gap-1.5">
                       <Icon name="BookOpen" size={12} />Основной контент (только для тренера)
                     </div>
-                    <div className="text-foreground leading-relaxed whitespace-pre-wrap">{viewingLesson.content}</div>
+                    <MarkdownRenderer text={viewingLesson.content || ""} className="text-foreground text-sm" />
                   </div>
                 )}
                 {viewingLesson.summary && (
@@ -1412,7 +1710,7 @@ function CoursesView({ user }: { user: User }) {
                     <div className="text-xs font-semibold mb-2 flex items-center gap-1.5" style={{ color: "#1B2A4A" }}>
                       <Icon name="List" size={12} />Опорный конспект (видит ученик)
                     </div>
-                    <div className="text-foreground leading-relaxed text-sm whitespace-pre-wrap">{viewingLesson.summary}</div>
+                    <MarkdownRenderer text={viewingLesson.summary || ""} className="text-foreground text-sm" />
                   </div>
                 )}
                 {viewingLesson.hasHomework && viewingLesson.homework && (
@@ -1420,7 +1718,7 @@ function CoursesView({ user }: { user: User }) {
                     <div className="text-xs font-semibold mb-2 flex items-center gap-1.5" style={{ color: "#F4720B" }}>
                       <Icon name="FileText" size={12} />Домашнее задание
                     </div>
-                    <div className="text-foreground leading-relaxed text-sm whitespace-pre-wrap">{viewingLesson.homework}</div>
+                    <MarkdownRenderer text={viewingLesson.homework || ""} className="text-foreground text-sm" />
                   </div>
                 )}
                 {viewingLesson.cheatsheet && (
@@ -1428,7 +1726,7 @@ function CoursesView({ user }: { user: User }) {
                     <div className="text-xs font-semibold mb-2 flex items-center gap-1.5" style={{ color: "#059669" }}>
                       <Icon name="Lightbulb" size={12} />Шпаргалка
                     </div>
-                    <div className="text-foreground leading-relaxed text-sm whitespace-pre-wrap">{viewingLesson.cheatsheet}</div>
+                    <MarkdownRenderer text={viewingLesson.cheatsheet || ""} className="text-foreground text-sm" />
                   </div>
                 )}
               </div>
@@ -1469,7 +1767,7 @@ function CoursesView({ user }: { user: User }) {
                   </div>
                   Опорный конспект
                 </h3>
-                <div className="text-foreground leading-relaxed whitespace-pre-wrap text-[15px]">{viewingLesson.summary}</div>
+                <MarkdownRenderer text={viewingLesson.summary || ""} className="text-foreground text-[15px]" />
               </div>
             ) : (
               <div className="bg-white rounded-2xl p-6 border border-border/50 text-center text-muted-foreground">
@@ -1487,7 +1785,7 @@ function CoursesView({ user }: { user: User }) {
                   </div>
                   Шпаргалка
                 </h3>
-                <div className="leading-relaxed whitespace-pre-wrap text-[15px]" style={{ color: "#065F46" }}>{viewingLesson.cheatsheet}</div>
+                <MarkdownRenderer text={viewingLesson.cheatsheet || ""} className="text-[15px]" />
               </div>
             ) : (
               <div className="rounded-2xl p-5 text-center" style={{ background: "#F0FFF4", border: "1.5px dashed #A7F3D0" }}>
@@ -1504,7 +1802,7 @@ function CoursesView({ user }: { user: User }) {
                   </div>
                   Домашнее задание
                 </h3>
-                <div className="leading-relaxed whitespace-pre-wrap text-[15px] text-foreground">{viewingLesson.homework}</div>
+                <MarkdownRenderer text={viewingLesson.homework || ""} className="text-foreground text-[15px]" />
               </div>
             )}
 
@@ -1665,43 +1963,31 @@ function CoursesView({ user }: { user: User }) {
                 <div>
                   <label className="text-sm font-medium text-foreground mb-1.5 block flex items-center gap-1.5">
                     <Icon name="BookOpen" size={13} />Основной контент
-                    <span className="text-xs font-normal text-muted-foreground">(только для тренера, подготовка к занятию)</span>
+                    <span className="text-xs font-normal text-muted-foreground">(только для тренера)</span>
                   </label>
-                  <textarea value={lessonContent} onChange={e => setLessonContent(e.target.value)}
-                    placeholder="Конспект занятия, сценарий, методические заметки..."
-                    rows={3} className="w-full px-3 py-2.5 rounded-xl text-foreground text-sm outline-none resize-none"
-                    style={{ background: "#F8F9FB", border: "1.5px solid #E0E5EF" }} />
+                  <MarkdownEditor value={lessonContent} onChange={setLessonContent} rows={4} placeholder="Конспект занятия, сценарий, методические заметки..." />
                 </div>
                 <div>
                   <label className="text-sm font-medium text-foreground mb-1.5 block flex items-center gap-1.5">
                     <Icon name="List" size={13} style={{ color: "#1B2A4A" }} />Опорный конспект
-                    <span className="text-xs font-normal text-muted-foreground">(видит ученик — ключевые мысли урока)</span>
+                    <span className="text-xs font-normal text-muted-foreground">(видит ученик)</span>
                   </label>
-                  <textarea value={lessonSummary} onChange={e => setLessonSummary(e.target.value)}
-                    placeholder="Ключевые тезисы, выводы, структура урока для ученика..."
-                    rows={4} className="w-full px-3 py-2.5 rounded-xl text-foreground text-sm outline-none resize-none"
-                    style={{ background: "#EEF1F7", border: "1.5px solid #D0D8EA" }} />
+                  <MarkdownEditor value={lessonSummary} onChange={setLessonSummary} rows={4} placeholder="Ключевые тезисы, выводы, структура урока для ученика..." />
                 </div>
                 {lessonHasHomework && (
                   <div>
                     <label className="text-sm font-medium text-foreground mb-1.5 block flex items-center gap-1.5">
                       <Icon name="FileText" size={13} style={{ color: "#F4720B" }} />Домашнее задание
                     </label>
-                    <textarea value={lessonHomework} onChange={e => setLessonHomework(e.target.value)}
-                      placeholder="Задание для самостоятельного выполнения..."
-                      rows={3} className="w-full px-3 py-2.5 rounded-xl text-foreground text-sm outline-none resize-none"
-                      style={{ background: "#FFF3E8", border: "1.5px solid #FDDCB5" }} />
+                    <MarkdownEditor value={lessonHomework} onChange={setLessonHomework} rows={3} placeholder="Задание для самостоятельного выполнения..." />
                   </div>
                 )}
                 <div>
                   <label className="text-sm font-medium text-foreground mb-1.5 block flex items-center gap-1.5">
                     <Icon name="Lightbulb" size={13} style={{ color: "#059669" }} />Шпаргалка
-                    <span className="text-xs font-normal text-muted-foreground">(готовые формулы и фразы для работы)</span>
+                    <span className="text-xs font-normal text-muted-foreground">(готовые формулы и фразы)</span>
                   </label>
-                  <textarea value={lessonCheatsheet} onChange={e => setLessonCheatsheet(e.target.value)}
-                    placeholder="Готовые фразы, таблицы, алгоритмы для практики..."
-                    rows={3} className="w-full px-3 py-2.5 rounded-xl text-foreground text-sm outline-none resize-none"
-                    style={{ background: "#ECFDF5", border: "1.5px solid #A7F3D0" }} />
+                  <MarkdownEditor value={lessonCheatsheet} onChange={setLessonCheatsheet} rows={3} placeholder="Готовые фразы, таблицы, алгоритмы для практики..." />
                 </div>
               </div>
               <div className="flex gap-3 p-6 border-t border-border/50">
@@ -1765,29 +2051,21 @@ function CoursesView({ user }: { user: User }) {
                 </div>
                 <div>
                   <label className="text-sm font-medium text-foreground mb-1.5 block"><Icon name="BookOpen" size={13} className="inline mr-1" />Основной контент <span className="text-xs font-normal text-muted-foreground">(только тренер)</span></label>
-                  <textarea value={lessonContent} onChange={e => setLessonContent(e.target.value)} placeholder="Конспект занятия, методические заметки..."
-                    rows={3} className="w-full px-3 py-2.5 rounded-xl text-foreground text-sm outline-none resize-none"
-                    style={{ background: "#F8F9FB", border: "1.5px solid #E0E5EF" }} />
+                  <MarkdownEditor value={lessonContent} onChange={setLessonContent} rows={4} placeholder="Конспект занятия, методические заметки..." />
                 </div>
                 <div>
                   <label className="text-sm font-medium text-foreground mb-1.5 block"><Icon name="List" size={13} className="inline mr-1" />Опорный конспект <span className="text-xs font-normal text-muted-foreground">(видит ученик)</span></label>
-                  <textarea value={lessonSummary} onChange={e => setLessonSummary(e.target.value)} placeholder="Ключевые тезисы для ученика..."
-                    rows={3} className="w-full px-3 py-2.5 rounded-xl text-foreground text-sm outline-none resize-none"
-                    style={{ background: "#EEF1F7", border: "1.5px solid #D0D8EA" }} />
+                  <MarkdownEditor value={lessonSummary} onChange={setLessonSummary} rows={4} placeholder="Ключевые тезисы для ученика..." />
                 </div>
                 {lessonHasHomework && (
                   <div>
                     <label className="text-sm font-medium text-foreground mb-1.5 block" style={{ color: "#F4720B" }}><Icon name="FileText" size={13} className="inline mr-1" />Домашнее задание</label>
-                    <textarea value={lessonHomework} onChange={e => setLessonHomework(e.target.value)} placeholder="Задание..."
-                      rows={3} className="w-full px-3 py-2.5 rounded-xl text-foreground text-sm outline-none resize-none"
-                      style={{ background: "#FFF3E8", border: "1.5px solid #FDDCB5" }} />
+                    <MarkdownEditor value={lessonHomework} onChange={setLessonHomework} rows={3} placeholder="Задание..." />
                   </div>
                 )}
                 <div>
                   <label className="text-sm font-medium text-foreground mb-1.5 block" style={{ color: "#059669" }}><Icon name="Lightbulb" size={13} className="inline mr-1" />Шпаргалка</label>
-                  <textarea value={lessonCheatsheet} onChange={e => setLessonCheatsheet(e.target.value)} placeholder="Ключевые тезисы..."
-                    rows={3} className="w-full px-3 py-2.5 rounded-xl text-foreground text-sm outline-none resize-none"
-                    style={{ background: "#ECFDF5", border: "1.5px solid #A7F3D0" }} />
+                  <MarkdownEditor value={lessonCheatsheet} onChange={setLessonCheatsheet} rows={3} placeholder="Ключевые тезисы..." />
                 </div>
               </div>
               <div className="flex gap-3 p-6 border-t border-border/50">
