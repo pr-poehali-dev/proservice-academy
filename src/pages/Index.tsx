@@ -1563,19 +1563,58 @@ function CoursesView({ user }: { user: User }) {
     setSlidesSaving(false);
   };
 
+  const [aiRawResponse, setAiRawResponse] = useState("");
+
   const generateSlidesFromAI = async () => {
     if (!editingLesson) return;
     const text = lessonContent.trim();
     if (!text) { setAiError("Сначала заполните поле «Основной контент»"); return; }
     setAiGenerating(true);
     setAiError("");
+    setAiRawResponse("");
     try {
       const { callAi: ai } = await import("@/lib/ai");
-      const prompt = `Ты помощник для создания презентаций на русском языке. Преобразуй следующий учебный текст в презентацию. Раздели на слайды — не более 10 слайдов. Для каждого слайда дай: 1) короткий заголовок до 7 слов 2) содержимое: 3-5 коротких тезисов. Верни результат строго в формате JSON: [{"title": "...", "content": ["...", "..."]}] Только JSON — без пояснений и комментариев.\n\nТекст урока:\n${text}`;
+      const prompt = `Ты генератор презентаций. Твоя задача — преобразовать текст в слайды.
+
+ВАЖНО: отвечай ТОЛЬКО валидным JSON массивом. Никаких пояснений, никакого текста до или после.
+
+Формат ответа строго такой:
+[
+  {"title": "Заголовок слайда 1", "content": ["Тезис 1", "Тезис 2", "Тезис 3"]},
+  {"title": "Заголовок слайда 2", "content": ["Тезис 1", "Тезис 2"]}
+]
+
+Правила:
+- Максимум 10 слайдов
+- Заголовок слайда — до 7 слов
+- В каждом слайде 3-5 коротких тезисов
+- Тезисы на русском языке
+- Только JSON, ничего больше
+
+Текст для преобразования:
+${text}`;
       const reply = await ai(prompt);
-      const jsonStr = reply.match(/\[[\s\S]*\]/)?.[0];
-      if (!jsonStr) throw new Error("Не удалось распознать JSON в ответе модели");
-      const parsed: { title: string; content: string[] }[] = JSON.parse(jsonStr);
+      // Очищаем ответ перед парсингом
+      let cleaned = reply.trim();
+      cleaned = cleaned.replace(/```json|```/g, "");
+      cleaned = cleaned.replace(/^[^[]*/, "");
+      cleaned = cleaned.replace(/[^\]]*$/, "");
+      cleaned = cleaned.trim();
+      if (!cleaned) {
+        setAiRawResponse(reply);
+        throw new Error("JSON не найден в ответе модели");
+      }
+      let parsed: { title: string; content: string[] }[];
+      try {
+        parsed = JSON.parse(cleaned);
+      } catch (_parseErr) {
+        setAiRawResponse(reply);
+        throw new Error("Не удалось разобрать JSON");
+      }
+      if (!Array.isArray(parsed) || parsed.length === 0) {
+        setAiRawResponse(reply);
+        throw new Error("Модель вернула пустой или неверный массив");
+      }
       setLessonSlides(parsed.map(s => ({ title: s.title || "", content: Array.isArray(s.content) ? s.content : [] })));
       setSlidesDirty(true);
     } catch (e) {
@@ -2123,9 +2162,18 @@ function CoursesView({ user }: { user: User }) {
                   </div>
 
                   {aiError && (
-                    <div className="px-4 py-2 text-xs flex items-center gap-2" style={{ background: "#FEF2F2", color: "#DC2626" }}>
-                      <Icon name="AlertCircle" size={12} />
-                      {aiError}
+                    <div className="px-4 py-3 text-xs space-y-2" style={{ background: "#FEF2F2", borderTop: "1px solid #FECACA" }}>
+                      <div className="flex items-center gap-2 font-medium" style={{ color: "#DC2626" }}>
+                        <Icon name="AlertCircle" size={12} />
+                        Модель ответила некорректно. Попробуйте перегенерировать или создайте слайды вручную.
+                      </div>
+                      <div className="text-muted-foreground">{aiError}</div>
+                      {aiRawResponse && (
+                        <details className="mt-1">
+                          <summary className="cursor-pointer text-muted-foreground hover:text-foreground">Показать ответ модели</summary>
+                          <pre className="mt-2 p-2 rounded text-[11px] overflow-auto max-h-40 whitespace-pre-wrap" style={{ background: "#FEF2F2", color: "#7F1D1D" }}>{aiRawResponse}</pre>
+                        </details>
+                      )}
                     </div>
                   )}
 
