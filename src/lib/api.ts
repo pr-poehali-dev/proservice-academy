@@ -103,6 +103,36 @@ export const apiPostMessage = (topicId: number, data: { author_id: number; text:
 export const apiLikePost = (postId: number, userId: number) =>
   post<Record<string, unknown>>(`/forum/posts/${postId}/like`, { user_id: userId });
 
+// Direct Messages
+export interface DmDialog {
+  partner_id: number;
+  partner_name: string;
+  partner_avatar: string;
+  partner_photo_url: string;
+  last_text: string;
+  last_time: string;
+  unread_count: number;
+}
+export interface DmMessage {
+  id: number;
+  from_user_id: number;
+  to_user_id: number;
+  text: string;
+  is_read: boolean;
+  created_at: string;
+  sender_name: string;
+  sender_avatar: string;
+  sender_photo_url: string;
+}
+export const apiGetDialogs = (userId: number) =>
+  get<DmDialog[]>('/dm/dialogs', { user_id: String(userId) });
+export const apiGetMessages = (fromId: number, toId: number) =>
+  get<DmMessage[]>('/dm/messages', { from: String(fromId), to: String(toId) });
+export const apiSendMessage = (fromUserId: number, toUserId: number, text: string) =>
+  post<DmMessage>('/dm/send', { from_user_id: fromUserId, to_user_id: toUserId, text });
+export const apiGetUnreadDm = (userId: number) =>
+  get<{ count: number }>('/dm/unread', { user_id: String(userId) });
+
 // Public User Profile
 export interface UserProfile {
   id: number;

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, createContext, useContext } from "react";
+import { useState, useEffect, useCallback, useRef, createContext, useContext } from "react";
 import Icon from "@/components/ui/icon";
 import * as API from "@/lib/api";
 
@@ -22,9 +22,12 @@ function useLocalStorage<T>(key: string, initial: T): [T, (v: T | ((prev: T) => 
   return [value, set];
 }
 
-// ─── Profile context (для открытия профиля из любого компонента) ──────────────
+// ─── Contexts ─────────────────────────────────────────────────────────────────
 const ProfileCtx = createContext<((userId: number) => void) | null>(null);
 const useOpenProfile = () => useContext(ProfileCtx)!;
+type OpenDmFn = (partnerId: number, partnerName: string, partnerAvatar: string, partnerPhotoUrl: string) => void;
+const DmCtx = createContext<OpenDmFn | null>(null);
+const useOpenDm = () => useContext(DmCtx)!;
 
 // ─── UserAvatar ───────────────────────────────────────────────────────────────
 function UserAvatar({ photoUrl, initials, size = 36, radius = "rounded-full", bg = "#1B2A4A", textSize = "text-sm" }: {
@@ -54,8 +57,8 @@ function ClickableName({ userId, name, className = "", style }: { userId: number
 }
 
 // ─── UserProfileModal ─────────────────────────────────────────────────────────
-function UserProfileModal({ viewerId, viewerRole, targetUserId, onClose, onEdit }: {
-  viewerId: number; viewerRole: string; targetUserId: number; onClose: () => void; onEdit: () => void;
+function UserProfileModal({ viewerId, viewerRole, targetUserId, onClose, onEdit, onWriteMessage }: {
+  viewerId: number; viewerRole: string; targetUserId: number; onClose: () => void; onEdit: () => void; onWriteMessage: () => void;
 }) {
   const [profile, setProfile] = useState<API.UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
@@ -140,10 +143,15 @@ function UserProfileModal({ viewerId, viewerRole, targetUserId, onClose, onEdit 
                 </div>
               )}
               <div className="flex gap-3 pt-2">
-                {isSelf && (
+                {isSelf ? (
                   <button onClick={onEdit} className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium text-white transition-all hover:opacity-90" style={{ background: "#F4720B" }}>
                     <Icon name="Pencil" size={14} />
                     Редактировать профиль
+                  </button>
+                ) : (
+                  <button onClick={onWriteMessage} className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium text-white transition-all hover:opacity-90" style={{ background: "#F4720B" }}>
+                    <Icon name="MessageCircle" size={14} />
+                    Написать сообщение
                   </button>
                 )}
                 <button onClick={onClose} className="flex-1 px-4 py-2.5 rounded-xl text-sm font-medium text-foreground transition-all hover:bg-gray-100" style={{ background: "#F8F9FB" }}>
@@ -154,6 +162,170 @@ function UserProfileModal({ viewerId, viewerRole, targetUserId, onClose, onEdit 
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+// ─── DmChatModal ──────────────────────────────────────────────────────────────
+function DmChatModal({ currentUser, partnerId, partnerName, partnerAvatar, partnerPhotoUrl, onClose }: {
+  currentUser: { id: number; name: string; avatar: string; photo_url?: string };
+  partnerId: number; partnerName: string; partnerAvatar: string; partnerPhotoUrl: string; onClose: () => void;
+}) {
+  const [messages, setMessages] = useState<API.DmMessage[]>([]);
+  const [text, setText] = useState("");
+  const [sending, setSending] = useState(false);
+  const bottomRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    API.apiGetMessages(currentUser.id, partnerId).then(setMessages).catch(() => {});
+    const iv = setInterval(() => {
+      API.apiGetMessages(currentUser.id, partnerId).then(setMessages).catch(() => {});
+    }, 5000);
+    return () => clearInterval(iv);
+  }, [currentUser.id, partnerId]);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+
+  const handleSend = async () => {
+    if (!text.trim() || sending) return;
+    setSending(true);
+    const optimistic: API.DmMessage = {
+      id: Date.now(), from_user_id: currentUser.id, to_user_id: partnerId,
+      text: text.trim(), is_read: false, created_at: new Date().toISOString(),
+      sender_name: currentUser.name, sender_avatar: currentUser.avatar, sender_photo_url: currentUser.photo_url || '',
+    };
+    setMessages(prev => [...prev, optimistic]);
+    setText("");
+    try {
+      await API.apiSendMessage(currentUser.id, partnerId, optimistic.text);
+    } catch (_e) { /* ignore */ }
+    setSending(false);
+  };
+
+  const fmt = (d: string) => new Date(d).toLocaleTimeString("ru", { hour: "2-digit", minute: "2-digit" });
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.5)", backdropFilter: "blur(4px)" }}
+      onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg flex flex-col animate-fade-in" style={{ height: "80vh", maxHeight: 600 }}>
+        {/* Шапка */}
+        <div className="flex items-center gap-3 px-5 py-4 border-b border-border/50 shrink-0">
+          <UserAvatar photoUrl={partnerPhotoUrl} initials={partnerAvatar} size={40} />
+          <div className="flex-1 font-semibold text-foreground">{partnerName}</div>
+          <button onClick={onClose} className="w-8 h-8 rounded-full flex items-center justify-center text-muted-foreground hover:bg-gray-100 transition-all">
+            <Icon name="X" size={18} />
+          </button>
+        </div>
+        {/* Сообщения */}
+        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
+          {messages.length === 0 && (
+            <div className="flex items-center justify-center h-full text-sm text-muted-foreground">Нет сообщений. Напишите первым!</div>
+          )}
+          {messages.map(m => {
+            const isMine = m.from_user_id === currentUser.id;
+            return (
+              <div key={m.id} className={`flex gap-2 ${isMine ? "flex-row-reverse" : ""}`}>
+                {!isMine && <UserAvatar photoUrl={m.sender_photo_url} initials={m.sender_avatar} size={32} />}
+                <div className={`max-w-[70%] ${isMine ? "items-end" : "items-start"} flex flex-col gap-0.5`}>
+                  <div className={`px-4 py-2.5 rounded-2xl text-sm leading-relaxed ${isMine ? "text-white" : "text-foreground"}`}
+                    style={{ background: isMine ? "#F4720B" : "#F0F3F8", borderRadius: isMine ? "18px 18px 4px 18px" : "18px 18px 18px 4px" }}>
+                    {m.text}
+                  </div>
+                  <div className="flex items-center gap-1 text-[11px] text-muted-foreground px-1">
+                    <span>{fmt(m.created_at)}</span>
+                    {isMine && <Icon name={m.is_read ? "CheckCheck" : "Check"} size={12} style={{ color: m.is_read ? "#059669" : "#9CA3AF" }} />}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+          <div ref={bottomRef} />
+        </div>
+        {/* Ввод */}
+        <div className="px-4 py-3 border-t border-border/50 flex gap-2 items-end shrink-0">
+          <textarea value={text} onChange={e => setText(e.target.value)}
+            onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
+            placeholder="Напишите сообщение..."
+            rows={1} className="flex-1 resize-none px-4 py-2.5 rounded-xl text-sm outline-none"
+            style={{ background: "#F0F3F8", border: "1.5px solid #E0E5EF", maxHeight: 100 }} />
+          <button onClick={handleSend} disabled={!text.trim() || sending}
+            className="w-10 h-10 rounded-xl flex items-center justify-center text-white shrink-0 disabled:opacity-40 transition-all hover:opacity-90"
+            style={{ background: "#F4720B" }}>
+            <Icon name="Send" size={16} />
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── MessagesView ──────────────────────────────────────────────────────────────
+function MessagesView({ user }: { user: { id: number; name: string; avatar: string; photo_url?: string } }) {
+  const [dialogs, setDialogs] = useState<API.DmDialog[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [activeDm, setActiveDm] = useState<{ partnerId: number; partnerName: string; partnerAvatar: string; partnerPhotoUrl: string } | null>(null);
+
+  const load = () => {
+    API.apiGetDialogs(user.id).then(d => { setDialogs(d); setLoading(false); }).catch(() => setLoading(false));
+  };
+
+  useEffect(() => { load(); }, [user.id]);
+
+  const fmt = (d: string) => {
+    const dt = new Date(d);
+    const now = new Date();
+    if (dt.toDateString() === now.toDateString()) return dt.toLocaleTimeString("ru", { hour: "2-digit", minute: "2-digit" });
+    return dt.toLocaleDateString("ru", { day: "numeric", month: "short" });
+  };
+
+  return (
+    <div className="animate-fade-in space-y-4 max-w-2xl">
+      <h1 className="text-2xl font-bold">Сообщения</h1>
+      {loading ? (
+        <div className="flex items-center justify-center py-16 text-muted-foreground">
+          <Icon name="Loader" size={22} className="animate-spin mr-2" />Загрузка...
+        </div>
+      ) : dialogs.length === 0 ? (
+        <div className="bg-white rounded-2xl p-12 border border-border/50 text-center">
+          <div className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4" style={{ background: "#FFF3E8" }}>
+            <Icon name="MessageCircle" size={28} style={{ color: "#F4720B" }} />
+          </div>
+          <h3 className="font-bold text-foreground mb-2">Нет сообщений</h3>
+          <p className="text-sm text-muted-foreground">Откройте профиль любого пользователя и нажмите «Написать сообщение»</p>
+        </div>
+      ) : (
+        <div className="bg-white rounded-2xl border border-border/50 overflow-hidden">
+          {dialogs.map((d, i) => (
+            <div key={d.partner_id}
+              className="flex items-center gap-3 px-5 py-4 hover:bg-gray-50 cursor-pointer transition-all"
+              style={{ borderBottom: i < dialogs.length - 1 ? "1px solid #EEF1F7" : "none" }}
+              onClick={() => setActiveDm({ partnerId: d.partner_id, partnerName: d.partner_name, partnerAvatar: d.partner_avatar, partnerPhotoUrl: d.partner_photo_url })}>
+              <div className="relative shrink-0">
+                <UserAvatar photoUrl={d.partner_photo_url} initials={d.partner_avatar} size={48} />
+                {d.unread_count > 0 && (
+                  <span className="absolute -top-1 -right-1 w-5 h-5 rounded-full flex items-center justify-center text-white text-[10px] font-bold" style={{ background: "#F4720B" }}>
+                    {d.unread_count > 9 ? "9+" : d.unread_count}
+                  </span>
+                )}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center justify-between mb-0.5">
+                  <span className="font-semibold text-foreground text-sm">{d.partner_name}</span>
+                  <span className="text-xs text-muted-foreground shrink-0 ml-2">{fmt(d.last_time)}</span>
+                </div>
+                <p className="text-sm text-muted-foreground truncate">{d.last_text}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      {activeDm && (
+        <DmChatModal currentUser={user} partnerId={activeDm.partnerId} partnerName={activeDm.partnerName}
+          partnerAvatar={activeDm.partnerAvatar} partnerPhotoUrl={activeDm.partnerPhotoUrl}
+          onClose={() => { setActiveDm(null); load(); }} />
+      )}
     </div>
   );
 }
@@ -489,8 +661,8 @@ function LoginPage({ onLogin }: { onLogin: (user: User) => void }) {
 }
 
 // ─── Sidebar ──────────────────────────────────────────────────────────────────
-function Sidebar({ user, activeTab, setActiveTab, onLogout }: {
-  user: User; activeTab: string; setActiveTab: (tab: string) => void; onLogout: () => void;
+function Sidebar({ user, activeTab, setActiveTab, onLogout, dmUnread }: {
+  user: User; activeTab: string; setActiveTab: (tab: string) => void; onLogout: () => void; dmUnread: number;
 }) {
   const trainerNav = [
     { id: "dashboard", icon: "LayoutDashboard", label: "Главная" },
@@ -498,6 +670,7 @@ function Sidebar({ user, activeTab, setActiveTab, onLogout }: {
     { id: "students", icon: "Users", label: "Ученики" },
     { id: "homeworks", icon: "ClipboardCheck", label: "Задания" },
     { id: "forum", icon: "MessageSquare", label: "Форум" },
+    { id: "messages", icon: "MessageCircle", label: "Сообщения" },
     { id: "presentation", icon: "Monitor", label: "Презентация" },
     { id: "profile", icon: "UserCircle", label: "Мой профиль" },
   ];
@@ -506,6 +679,7 @@ function Sidebar({ user, activeTab, setActiveTab, onLogout }: {
     { id: "courses", icon: "BookOpen", label: "Мои курсы" },
     { id: "homeworks", icon: "ClipboardCheck", label: "Задания" },
     { id: "forum", icon: "MessageSquare", label: "Форум" },
+    { id: "messages", icon: "MessageCircle", label: "Сообщения" },
     { id: "profile", icon: "UserCircle", label: "Мой профиль" },
   ];
   const nav = user.role === "trainer" ? trainerNav : studentNav;
@@ -529,7 +703,12 @@ function Sidebar({ user, activeTab, setActiveTab, onLogout }: {
           <button key={item.id} onClick={() => setActiveTab(item.id)}
             className={`sidebar-nav-item w-full text-left ${activeTab === item.id ? "active" : ""}`}>
             <Icon name={item.icon} size={18} />
-            {item.label}
+            <span className="flex-1 text-left">{item.label}</span>
+            {item.id === "messages" && dmUnread > 0 && (
+              <span className="w-5 h-5 rounded-full flex items-center justify-center text-white text-[10px] font-bold" style={{ background: "#F4720B" }}>
+                {dmUnread > 9 ? "9+" : dmUnread}
+              </span>
+            )}
           </button>
         ))}
       </nav>
@@ -552,19 +731,19 @@ function Sidebar({ user, activeTab, setActiveTab, onLogout }: {
 }
 
 // ─── Mobile Bottom Nav ────────────────────────────────────────────────────────
-function MobileNav({ user, activeTab, setActiveTab }: { user: User; activeTab: string; setActiveTab: (t: string) => void }) {
+function MobileNav({ user, activeTab, setActiveTab, dmUnread }: { user: User; activeTab: string; setActiveTab: (t: string) => void; dmUnread: number }) {
   const trainerNav = [
     { id: "dashboard", icon: "LayoutDashboard", label: "Главная" },
     { id: "courses", icon: "BookOpen", label: "Курсы" },
     { id: "homeworks", icon: "ClipboardCheck", label: "Задания" },
-    { id: "students", icon: "Users", label: "Ученики" },
+    { id: "messages", icon: "MessageCircle", label: "Сообщения" },
     { id: "forum", icon: "MessageSquare", label: "Форум" },
   ];
   const studentNav = [
     { id: "dashboard", icon: "LayoutDashboard", label: "Кабинет" },
     { id: "courses", icon: "BookOpen", label: "Курсы" },
     { id: "homeworks", icon: "ClipboardCheck", label: "Задания" },
-    { id: "forum", icon: "MessageSquare", label: "Форум" },
+    { id: "messages", icon: "MessageCircle", label: "Сообщения" },
     { id: "profile", icon: "UserCircle", label: "Профиль" },
   ];
   const nav = user.role === "trainer" ? trainerNav : studentNav;
@@ -573,9 +752,16 @@ function MobileNav({ user, activeTab, setActiveTab }: { user: User; activeTab: s
     <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 flex" style={{ background: "#1B2A4A", borderTop: "1px solid rgba(255,255,255,0.1)" }}>
       {nav.map(item => (
         <button key={item.id} onClick={() => setActiveTab(item.id)}
-          className="flex-1 flex flex-col items-center py-3 gap-1 transition-all"
+          className="flex-1 flex flex-col items-center py-3 gap-1 transition-all relative"
           style={{ color: activeTab === item.id ? "#F4720B" : "rgba(255,255,255,0.5)" }}>
-          <Icon name={item.icon} size={20} />
+          <div className="relative">
+            <Icon name={item.icon} size={20} />
+            {item.id === "messages" && dmUnread > 0 && (
+              <span className="absolute -top-1.5 -right-2 w-4 h-4 rounded-full flex items-center justify-center text-white text-[9px] font-bold" style={{ background: "#F4720B" }}>
+                {dmUnread > 9 ? "9+" : dmUnread}
+              </span>
+            )}
+          </div>
           <span className="text-[10px] font-medium">{item.label}</span>
         </button>
       ))}
@@ -3065,6 +3251,8 @@ export default function Index() {
   const [presentMode, setPresentMode] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [viewingUserId, setViewingUserId] = useState<number | null>(null);
+  const [dmUnread, setDmUnread] = useState(0);
+  const [activeDm, setActiveDm] = useState<{ partnerId: number; partnerName: string; partnerAvatar: string; partnerPhotoUrl: string } | null>(null);
 
   // Восстанавливаем presentMode если пользователь — презентация
   useEffect(() => {
@@ -3082,6 +3270,15 @@ export default function Index() {
         }
       }).catch(() => {});
     }
+  }, [user?.id]);
+
+  // Автообновление счётчика непрочитанных сообщений каждые 15 сек
+  useEffect(() => {
+    if (!user?.id || user.role === "presentation") return;
+    const fetchUnread = () => API.apiGetUnreadDm(user.id).then(r => setDmUnread(r.count)).catch(() => {});
+    fetchUnread();
+    const iv = setInterval(fetchUnread, 15000);
+    return () => clearInterval(iv);
   }, [user?.id]);
 
   // Загрузка уведомлений с сервера для ученика
@@ -3133,6 +3330,11 @@ export default function Index() {
   const myNotifications = notifications.filter(n => n.studentEmail === user.email);
   const unreadCount = myNotifications.filter(n => !n.read).length;
 
+  const openDm: OpenDmFn = (partnerId, partnerName, partnerAvatar, partnerPhotoUrl) => {
+    setActiveDm({ partnerId, partnerName, partnerAvatar, partnerPhotoUrl });
+    setViewingUserId(null);
+  };
+
   const renderTab = () => {
     if (activeTab === "dashboard") return user.role === "trainer"
       ? <TrainerDashboard />
@@ -3141,6 +3343,7 @@ export default function Index() {
     if (activeTab === "homeworks") return <HomeworksView user={user} onNotify={addNotification} />;
     if (activeTab === "students") return <StudentsView />;
     if (activeTab === "forum") return <ForumView user={user} />;
+    if (activeTab === "messages") return <MessagesView user={user} />;
     if (activeTab === "presentation") return <PresentationMode onExit={() => setActiveTab("dashboard")} />;
     if (activeTab === "profile") return <ProfileView user={user} onUserUpdate={u => setUser(u)} />;
     return null;
@@ -3150,6 +3353,7 @@ export default function Index() {
   const showWatermark = contentPages.includes(activeTab);
 
   return (
+    <DmCtx.Provider value={openDm}>
     <ProfileCtx.Provider value={setViewingUserId}>
     <div className="flex min-h-screen" style={{ background: "#F0F3F8" }}>
       {showWatermark && <Watermark name={user.name} />}
@@ -3160,9 +3364,22 @@ export default function Index() {
           targetUserId={viewingUserId}
           onClose={() => setViewingUserId(null)}
           onEdit={() => { setViewingUserId(null); setActiveTab("profile"); }}
+          onWriteMessage={() => {
+            if (viewingUserId !== null) {
+              API.apiGetUserProfile(viewingUserId).then(p => {
+                setActiveDm({ partnerId: p.id, partnerName: p.display_name || p.name, partnerAvatar: p.avatar, partnerPhotoUrl: p.photo_url });
+              }).catch(() => {});
+            }
+            setViewingUserId(null);
+          }}
         />
       )}
-      <Sidebar user={user} activeTab={activeTab} setActiveTab={setActiveTab} onLogout={handleLogout} />
+      {activeDm && (
+        <DmChatModal currentUser={user} partnerId={activeDm.partnerId} partnerName={activeDm.partnerName}
+          partnerAvatar={activeDm.partnerAvatar} partnerPhotoUrl={activeDm.partnerPhotoUrl}
+          onClose={() => { setActiveDm(null); API.apiGetUnreadDm(user.id).then(r => setDmUnread(r.count)).catch(() => {}); }} />
+      )}
+      <Sidebar user={user} activeTab={activeTab} setActiveTab={setActiveTab} onLogout={handleLogout} dmUnread={dmUnread} />
 
       <main className="flex-1 min-w-0">
         <header className="sticky top-0 z-40 flex items-center justify-between px-6 py-4 md:px-8"
@@ -3194,8 +3411,9 @@ export default function Index() {
         </div>
       </main>
 
-      <MobileNav user={user} activeTab={activeTab} setActiveTab={setActiveTab} />
+      <MobileNav user={user} activeTab={activeTab} setActiveTab={setActiveTab} dmUnread={dmUnread} />
     </div>
     </ProfileCtx.Provider>
+    </DmCtx.Provider>
   );
 }

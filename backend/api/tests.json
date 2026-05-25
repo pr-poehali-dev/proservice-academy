@@ -27,6 +27,15 @@
       "bodyMatcher": "partial"
     },
     {
+      "name": "Get DM unread count",
+      "method": "POST",
+      "path": "/",
+      "body": {"_method": "GET", "_path": "/dm/unread?user_id=1"},
+      "expectedStatus": 200,
+      "expectedBody": {"count": 0},
+      "bodyMatcher": "partial"
+    },
+    {
       "name": "Get student stats",
       "method": "POST",
       "path": "/",

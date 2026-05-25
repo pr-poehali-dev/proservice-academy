@@ -613,6 +613,87 @@ def handler(event: dict, context) -> dict:
         conn.close()
         return ok({'ok': True})
 
+    # ── DIRECT MESSAGES ────────────────────────────────────────────────────────
+    # GET /dm/dialogs?user_id=X — список диалогов пользователя
+    if path == '/dm/dialogs' and method == 'GET':
+        uid = qs.get('user_id')
+        conn = db()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("""
+            SELECT
+                CASE WHEN m.from_user_id = %(uid)s THEN m.to_user_id ELSE m.from_user_id END AS partner_id,
+                u.name AS partner_name, u.avatar AS partner_avatar,
+                COALESCE(tp.photo_url, '') AS partner_photo_url,
+                m.text AS last_text,
+                m.created_at AS last_time,
+                COUNT(CASE WHEN m.to_user_id = %(uid)s AND m.is_read = false THEN 1 END) AS unread_count
+            FROM psa_direct_messages m
+            JOIN psa_users u ON u.id = CASE WHEN m.from_user_id = %(uid)s THEN m.to_user_id ELSE m.from_user_id END
+            LEFT JOIN psa_trainer_profile tp ON tp.user_id = u.id
+            WHERE m.from_user_id = %(uid)s OR m.to_user_id = %(uid)s
+            GROUP BY partner_id, u.name, u.avatar, tp.photo_url, m.text, m.created_at
+            ORDER BY m.created_at DESC
+        """, {'uid': uid})
+        rows = cur.fetchall()
+        conn.close()
+        # Оставляем только последнее сообщение для каждого диалога
+        seen = {}
+        for r in rows:
+            pid = r['partner_id']
+            if pid not in seen:
+                seen[pid] = dict(r)
+        return ok(list(seen.values()))
+
+    # GET /dm/messages?from=X&to=Y — история переписки
+    if path == '/dm/messages' and method == 'GET':
+        uid1 = qs.get('from')
+        uid2 = qs.get('to')
+        conn = db()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("""
+            SELECT m.*, u.name as sender_name, u.avatar as sender_avatar,
+                   COALESCE(tp.photo_url,'') as sender_photo_url
+            FROM psa_direct_messages m
+            JOIN psa_users u ON u.id = m.from_user_id
+            LEFT JOIN psa_trainer_profile tp ON tp.user_id = m.from_user_id
+            WHERE (m.from_user_id=%s AND m.to_user_id=%s)
+               OR (m.from_user_id=%s AND m.to_user_id=%s)
+            ORDER BY m.created_at ASC
+        """, (uid1, uid2, uid2, uid1))
+        msgs = [dict(r) for r in cur.fetchall()]
+        # Отмечаем прочитанными сообщения адресованные uid1
+        cur2 = conn.cursor()
+        cur2.execute("""
+            UPDATE psa_direct_messages SET is_read=true
+            WHERE to_user_id=%s AND from_user_id=%s AND is_read=false
+        """, (uid1, uid2))
+        conn.commit()
+        conn.close()
+        return ok(msgs)
+
+    # POST /dm/send — отправить сообщение
+    if path == '/dm/send' and method == 'POST':
+        conn = db()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("""
+            INSERT INTO psa_direct_messages (from_user_id, to_user_id, text)
+            VALUES (%s, %s, %s) RETURNING *
+        """, (body.get('from_user_id'), body.get('to_user_id'), body.get('text', '')))
+        msg = dict(cur.fetchone())
+        conn.commit()
+        conn.close()
+        return ok(msg, 201)
+
+    # GET /dm/unread?user_id=X — количество непрочитанных
+    if path == '/dm/unread' and method == 'GET':
+        uid = qs.get('user_id')
+        conn = db()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("SELECT COUNT(*) as cnt FROM psa_direct_messages WHERE to_user_id=%s AND is_read=false", (uid,))
+        cnt = cur.fetchone()['cnt']
+        conn.close()
+        return ok({'count': cnt})
+
     # ── STUDENT STATS ──────────────────────────────────────────────────────────
     if path.startswith('/student-stats/') and method == 'GET':
         uid = path.split('/')[2]
