@@ -2362,11 +2362,13 @@ function CoursesView({ user }: { user: User }) {
                 <div className="rounded-2xl overflow-hidden" style={{ border: "2px solid #EEF1F7" }}>
                   {/* Шапка */}
                   <div className="px-4 py-3 flex items-center justify-between flex-wrap gap-2" style={{ background: "#F0F3F8" }}>
-                    <span className="font-semibold text-foreground text-sm flex items-center gap-2">
+                    <button type="button" onClick={() => toggleSection("slides")}
+                      className="flex items-center gap-2 font-semibold text-foreground text-sm">
                       <Icon name="Monitor" size={15} style={{ color: "#F4720B" }} />
                       Слайды презентации
                       {lessonSlides.length > 0 && !aiProgress && <span className="text-xs font-normal text-muted-foreground">({lessonSlides.length} сл.)</span>}
-                    </span>
+                      <Icon name={collapsedSections.has("slides") ? "ChevronDown" : "ChevronUp"} size={14} className="text-muted-foreground" />
+                    </button>
                     <div className="flex items-center gap-2">
                       {aiProgress ? (
                         /* Индикатор прогресса */
@@ -2399,6 +2401,7 @@ function CoursesView({ user }: { user: User }) {
                     </div>
                   </div>
 
+                  <div style={{ display: collapsedSections.has("slides") ? "none" : undefined }}>
                   {/* Confirm перегенерации */}
                   {showRegenerateConfirm && (
                     <div className="px-4 py-3 flex items-center justify-between gap-3 flex-wrap" style={{ background: "#FFF7ED", borderTop: "1px solid #FDE68A" }}>
@@ -2512,6 +2515,7 @@ function CoursesView({ user }: { user: User }) {
                       </button>
                     )}
                   </div>
+                  </div>{/* /collapse */}
                 </div>
               </div>
               <div className="flex gap-3 p-6 border-t border-border/50">
