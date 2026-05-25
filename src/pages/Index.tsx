@@ -3445,9 +3445,9 @@ function PresentationMode({ onExit }: { onExit: () => void }) {
                   value={selectedCourseId ?? ""}
                   onChange={e => { setSelectedCourseId(Number(e.target.value) || null); setSelectedLessonId(null); }}
                   className="w-full px-4 py-3 rounded-xl text-white text-[15px] outline-none appearance-none cursor-pointer"
-                  style={{ background: "rgba(255,255,255,0.1)", border: "1.5px solid rgba(255,255,255,0.15)" }}>
-                  <option value="">— выберите курс —</option>
-                  {courses.map(c => <option key={c.id} value={c.id}>{c.title}</option>)}
+                  style={{ background: "#1B2A4A", border: "1.5px solid rgba(255,255,255,0.15)", color: "white" }}>
+                  <option value="" style={{ background: "#1B2A4A", color: "white" }}>— выберите курс —</option>
+                  {courses.map(c => <option key={c.id} value={c.id} style={{ background: "#1B2A4A", color: "white" }}>{c.title}</option>)}
                 </select>
               </div>
 
@@ -3458,9 +3458,9 @@ function PresentationMode({ onExit }: { onExit: () => void }) {
                     value={selectedLessonId ?? ""}
                     onChange={e => setSelectedLessonId(Number(e.target.value) || null)}
                     className="w-full px-4 py-3 rounded-xl text-white text-[15px] outline-none appearance-none cursor-pointer"
-                    style={{ background: "rgba(255,255,255,0.1)", border: "1.5px solid rgba(255,255,255,0.15)" }}>
-                    <option value="">— выберите урок —</option>
-                    {availableLessons.map(l => <option key={l.id} value={l.id}>{l.title}</option>)}
+                    style={{ background: "#1B2A4A", border: "1.5px solid rgba(255,255,255,0.15)", color: "white" }}>
+                    <option value="" style={{ background: "#1B2A4A", color: "white" }}>— выберите урок —</option>
+                    {availableLessons.map(l => <option key={l.id} value={l.id} style={{ background: "#1B2A4A", color: "white" }}>{l.title}</option>)}
                   </select>
                 </div>
               )}
