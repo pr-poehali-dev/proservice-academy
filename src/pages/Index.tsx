@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef, createContext, useContext } from "react";
 import Icon from "@/components/ui/icon";
 import * as API from "@/lib/api";
+import { type AiSettings, getAiSettings, saveAiSettingsToStorage, callAi, defaultAiSettings } from "@/lib/ai";
 
 // ─── localStorage helpers (кэш для быстрого UI) ────────────────────────────────
 function useLocalStorage<T>(key: string, initial: T): [T, (v: T | ((prev: T) => T)) => void] {
@@ -3692,7 +3693,31 @@ function ProfileView({ user, onUserUpdate }: { user: User; onUserUpdate: (u: Use
   const [password, setPassword] = useState("");
   const [passwordConfirm, setPasswordConfirm] = useState("");
   const [passwordError, setPasswordError] = useState("");
-  const [activeSection, setActiveSection] = useState<"public" | "account">("public");
+  const [activeSection, setActiveSection] = useState<"public" | "account" | "ai">("public");
+
+  // AI settings state
+  const [aiSettings, setAiSettings] = useState<AiSettings>(getAiSettings);
+  const [aiTesting, setAiTesting] = useState(false);
+  const [aiTestResult, setAiTestResult] = useState<{ ok: boolean; msg: string } | null>(null);
+  const [aiSaved, setAiSaved] = useState(false);
+
+  const saveAiSettings = () => {
+    saveAiSettingsToStorage(aiSettings);
+    setAiSaved(true);
+    setTimeout(() => setAiSaved(false), 2000);
+  };
+
+  const testAiConnection = async () => {
+    setAiTesting(true);
+    setAiTestResult(null);
+    try {
+      const reply = await callAi("Скажи 'OK' одним словом.");
+      setAiTestResult({ ok: true, msg: `Ответ модели: ${reply.slice(0, 80)}` });
+    } catch (e) {
+      setAiTestResult({ ok: false, msg: String(e) });
+    }
+    setAiTesting(false);
+  };
 
   useEffect(() => {
     API.apiGetProfile(user.id).then(raw => {
@@ -3768,10 +3793,11 @@ function ProfileView({ user, onUserUpdate }: { user: User; onUserUpdate: (u: Use
       {/* Вкладки */}
       <div className="flex gap-1 p-1 rounded-xl" style={{ background: "#EEF1F7" }}>
         {[
-          { id: "public" as const, label: "Публичный профиль", icon: "User" },
+          { id: "public" as const, label: "Профиль", icon: "User" },
           { id: "account" as const, label: "Аккаунт", icon: "Lock" },
+          ...(user.role === "trainer" ? [{ id: "ai" as const, label: "AI-ассистент", icon: "Bot" }] : []),
         ].map(tab => (
-          <button key={tab.id} onClick={() => setActiveSection(tab.id)}
+          <button key={tab.id} onClick={() => setActiveSection(tab.id as typeof activeSection)}
             className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-medium transition-all"
             style={activeSection === tab.id ? { background: "white", color: "#1B2A4A", boxShadow: "0 1px 4px rgba(0,0,0,0.08)" } : { color: "#6B7280" }}>
             <Icon name={tab.icon} size={15} />
@@ -3894,6 +3920,142 @@ function ProfileView({ user, onUserUpdate }: { user: User; onUserUpdate: (u: Use
                 {saving ? <><Icon name="Loader" size={15} className="animate-spin" />Сохранение...</> : "Сохранить"}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {activeSection === "ai" && user.role === "trainer" && (
+        <div className="space-y-5">
+          {/* Инструкция */}
+          <div className="rounded-2xl p-4 flex gap-3" style={{ background: "#EFF6FF", border: "1.5px solid #BFDBFE" }}>
+            <Icon name="Info" size={18} style={{ color: "#3B82F6" }} className="shrink-0 mt-0.5" />
+            <div className="text-sm" style={{ color: "#1E40AF" }}>
+              <p className="font-semibold mb-1">Для Ollama: запустить с разрешёнными источниками</p>
+              <code className="block text-xs px-2 py-1 rounded mt-1" style={{ background: "rgba(59,130,246,0.1)" }}>
+                OLLAMA_ORIGINS=* ollama serve
+              </code>
+              <p className="mt-1.5 text-xs opacity-80">Либо установите переменную окружения OLLAMA_ORIGINS=* в настройках системы и перезапустите Ollama.</p>
+            </div>
+          </div>
+
+          {/* Выбор провайдера */}
+          <div className="bg-white rounded-2xl p-6 border border-border/50 space-y-5">
+            <h3 className="font-bold text-foreground">Провайдер AI</h3>
+            <div className="grid grid-cols-2 gap-3">
+              {([
+                { id: "ollama", label: "Локальная модель", sub: "Ollama на вашем компьютере", icon: "Server" },
+                { id: "openai", label: "OpenAI API", sub: "GPT-4o, GPT-4o mini и др.", icon: "Cloud" },
+              ] as const).map(p => (
+                <button key={p.id} onClick={() => setAiSettings(s => ({ ...s, provider: p.id }))}
+                  className="flex items-start gap-3 p-4 rounded-xl text-left transition-all"
+                  style={{
+                    border: `2px solid ${aiSettings.provider === p.id ? "#F4720B" : "#E0E5EF"}`,
+                    background: aiSettings.provider === p.id ? "#FFF3E8" : "#F8F9FB",
+                  }}>
+                  <div className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0 mt-0.5"
+                    style={{ background: aiSettings.provider === p.id ? "#F4720B" : "#E0E5EF" }}>
+                    <Icon name={p.icon} size={16} style={{ color: aiSettings.provider === p.id ? "white" : "#6B7280" }} />
+                  </div>
+                  <div>
+                    <div className="font-semibold text-sm text-foreground">{p.label}</div>
+                    <div className="text-xs text-muted-foreground mt-0.5">{p.sub}</div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Настройки Ollama */}
+          {aiSettings.provider === "ollama" && (
+            <div className="bg-white rounded-2xl p-6 border border-border/50 space-y-4">
+              <h3 className="font-bold text-foreground flex items-center gap-2">
+                <Icon name="Server" size={16} style={{ color: "#F4720B" }} />
+                Настройки Ollama
+              </h3>
+              <div>
+                <label className="text-sm font-medium text-foreground mb-1.5 block">Адрес сервера</label>
+                <input value={aiSettings.ollamaUrl} onChange={e => setAiSettings(s => ({ ...s, ollamaUrl: e.target.value }))}
+                  placeholder="http://localhost:11434"
+                  className="w-full px-4 py-3 rounded-xl text-foreground text-[15px] outline-none font-mono"
+                  style={{ background: "#F8F9FB", border: "1.5px solid #E0E5EF" }} />
+              </div>
+              <div>
+                <label className="text-sm font-medium text-foreground mb-1.5 block">Название модели</label>
+                <input value={aiSettings.ollamaModel} onChange={e => setAiSettings(s => ({ ...s, ollamaModel: e.target.value }))}
+                  placeholder="llama3"
+                  className="w-full px-4 py-3 rounded-xl text-foreground text-[15px] outline-none font-mono"
+                  style={{ background: "#F8F9FB", border: "1.5px solid #E0E5EF" }} />
+                <div className="flex gap-2 mt-2 flex-wrap">
+                  {["llama3", "llama3.2", "mistral", "gemma", "qwen2.5", "phi3"].map(m => (
+                    <button key={m} onClick={() => setAiSettings(s => ({ ...s, ollamaModel: m }))}
+                      className="px-2.5 py-1 rounded-lg text-xs font-mono transition-all"
+                      style={{
+                        background: aiSettings.ollamaModel === m ? "#F4720B" : "#F0F3F8",
+                        color: aiSettings.ollamaModel === m ? "white" : "#6B7280",
+                      }}>{m}</button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Настройки OpenAI */}
+          {aiSettings.provider === "openai" && (
+            <div className="bg-white rounded-2xl p-6 border border-border/50 space-y-4">
+              <h3 className="font-bold text-foreground flex items-center gap-2">
+                <Icon name="Cloud" size={16} style={{ color: "#F4720B" }} />
+                Настройки OpenAI
+              </h3>
+              <div>
+                <label className="text-sm font-medium text-foreground mb-1.5 block">API ключ</label>
+                <input value={aiSettings.openaiKey} onChange={e => setAiSettings(s => ({ ...s, openaiKey: e.target.value }))}
+                  placeholder="sk-..."
+                  type="password"
+                  className="w-full px-4 py-3 rounded-xl text-foreground text-[15px] outline-none font-mono"
+                  style={{ background: "#F8F9FB", border: "1.5px solid #E0E5EF" }} />
+                <p className="text-xs text-muted-foreground mt-1.5">Ключ хранится только локально в вашем браузере, не передаётся на сервер</p>
+              </div>
+              <div>
+                <label className="text-sm font-medium text-foreground mb-1.5 block">Модель</label>
+                <input value={aiSettings.openaiModel} onChange={e => setAiSettings(s => ({ ...s, openaiModel: e.target.value }))}
+                  placeholder="gpt-4o-mini"
+                  className="w-full px-4 py-3 rounded-xl text-foreground text-[15px] outline-none font-mono"
+                  style={{ background: "#F8F9FB", border: "1.5px solid #E0E5EF" }} />
+                <div className="flex gap-2 mt-2 flex-wrap">
+                  {["gpt-4o-mini", "gpt-4o", "gpt-4-turbo"].map(m => (
+                    <button key={m} onClick={() => setAiSettings(s => ({ ...s, openaiModel: m }))}
+                      className="px-2.5 py-1 rounded-lg text-xs font-mono transition-all"
+                      style={{
+                        background: aiSettings.openaiModel === m ? "#F4720B" : "#F0F3F8",
+                        color: aiSettings.openaiModel === m ? "white" : "#6B7280",
+                      }}>{m}</button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Тест + Сохранить */}
+          <div className="bg-white rounded-2xl p-6 border border-border/50">
+            <div className="flex gap-3">
+              <button onClick={testAiConnection} disabled={aiTesting}
+                className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all disabled:opacity-50"
+                style={{ background: "#F0F3F8", color: "#1B2A4A" }}>
+                {aiTesting ? <><Icon name="Loader" size={14} className="animate-spin" />Проверка...</> : <><Icon name="Zap" size={14} />Тест соединения</>}
+              </button>
+              <button onClick={saveAiSettings}
+                className="flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-medium text-white transition-all hover:opacity-90 ml-auto"
+                style={{ background: "#F4720B" }}>
+                {aiSaved ? <><Icon name="CheckCircle" size={14} />Сохранено</> : "Сохранить"}
+              </button>
+            </div>
+            {aiTestResult && (
+              <div className="flex items-start gap-2 p-3 rounded-xl text-sm mt-4"
+                style={{ background: aiTestResult.ok ? "#ECFDF5" : "#FEF2F2", color: aiTestResult.ok ? "#065F46" : "#991B1B" }}>
+                <Icon name={aiTestResult.ok ? "CheckCircle" : "AlertCircle"} size={15} className="shrink-0 mt-0.5" />
+                <span>{aiTestResult.msg}</span>
+              </div>
+            )}
           </div>
         </div>
       )}
