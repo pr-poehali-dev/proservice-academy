@@ -39,7 +39,6 @@ export async function callAi(prompt: string, system = "", temperature = 0.7, opt
       body: JSON.stringify({
         model: s.ollamaModel,
         stream: false,
-        format: "json",
         options: { temperature, ...options },
         messages: [
           ...(system ? [{ role: "system", content: system }] : []),

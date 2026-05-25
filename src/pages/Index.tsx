@@ -1578,72 +1578,94 @@ function CoursesView({ user }: { user: User }) {
     setAiRawResponse("");
     try {
       const { callAi: ai } = await import("@/lib/ai");
-      const prompt = `You are a professional educational presentation creator. Your ONLY output must be valid JSON.
-No explanations. No markdown. No extra text.
 
-STRICT OUTPUT FORMAT:
-[
-  {
-    "title": "Заголовок слайда на русском",
-    "content": [
-      "Ключевая мысль 1 — конкретная и понятная",
-      "Ключевая мысль 2 — конкретная и понятная",
-      "Ключевая мысль 3 — конкретная и понятная"
-    ]
-  }
-]
+      // System: жёсткая инструкция формата
+      const system = `You output ONLY a JSON array of slides. Nothing else. No explanation. No wrapper object.
+Format: [{"title":"...","content":["...","...","..."]}]
+Rules: title in Russian, content in Russian, 3-5 items per slide, max 10 slides.`;
 
-RULES:
-1. Language: Russian only. Translate nothing. Use exact terms from the source text.
-2. Slides: 8-12 slides total
-3. First slide: title slide with course topic and 2-3 main goals of the lesson
-4. Each slide covers ONE complete idea or topic
-5. Title: max 6 words, specific and clear
-6. Content: 3-5 points per slide
-7. Each point: ONE complete thought (not a word, not a sentence fragment)
-   Good: "Открытый вопрос даёт развёрнутый ответ"
-   Bad: "Открытые вопросы"
-8. Last slide: key takeaways from the lesson, title "Главное из урока"
-9. Tables in source text: convert to separate slide with key rows as bullet points
-10. Examples from source text: include the most vivid ones as separate points
-11. Output ONLY valid JSON array. No text before [. No text after ]. No \`\`\`json blocks.
+      // User: текст + пример вывода
+      const prompt = `Convert this educational text into presentation slides in Russian.
 
-Source text:
+OUTPUT EXAMPLE (copy this exact structure):
+[{"title":"Первый слайд","content":["Тезис один","Тезис два","Тезис три"]},{"title":"Второй слайд","content":["Тезис один","Тезис два"]}]
+
+REQUIREMENTS:
+- 8-10 slides
+- All text in Russian
+- title: short (max 6 words)
+- content: 3-5 complete sentences per slide
+- First slide: lesson topic + 2-3 goals
+- Last slide title must be "Главное из урока"
+- Output starts with [ and ends with ]
+
+TEXT:
 ${text}`;
-      const reply = await ai(prompt, "", 0.1, { num_predict: 4096 });
+
+      const reply = await ai(prompt, system, 0.1, { num_predict: 4096 });
       console.log("[AI slides] raw reply:", reply);
 
-      // Извлекаем и парсим JSON
-      let parsed: { title: string; content: string[] }[] | null = null;
+      // ── Парсер: ищем слайды в любой структуре ──────────────────────────────
+      type RawSlide = { title?: string; id?: string; content?: unknown; text?: string; points?: unknown; items?: unknown; bullets?: unknown };
 
-      // Попытка 1: ищем внешний массив [ ... ]
-      const arrayMatch = reply.match(/\[[\s\S]*\]/);
-      if (arrayMatch) {
-        try {
-          const candidate = JSON.parse(arrayMatch[0]);
-          if (Array.isArray(candidate) && candidate.length > 0 && candidate[0].title) {
-            parsed = candidate;
-          }
-        } catch (_e) { /* пробуем дальше */ }
-      }
-
-      // Попытка 2: парсим весь ответ как JSON (объект вида {"slides": [...]})
-      if (!parsed) {
-        try {
-          const cleaned = reply.trim().replace(/```json|```/g, "").trim();
-          const raw = JSON.parse(cleaned);
-          if (Array.isArray(raw) && raw.length > 0) {
-            parsed = raw;
-          } else if (raw && typeof raw === "object") {
-            // Ищем любой массив среди значений объекта ({"slides": [...], "items": [...]})
-            for (const val of Object.values(raw)) {
-              if (Array.isArray(val) && val.length > 0 && (val[0] as Record<string, unknown>)?.title) {
-                parsed = val as { title: string; content: string[] }[];
-                break;
-              }
+      const normalizeContent = (s: RawSlide): string[] => {
+        const cands: unknown[] = [];
+        if (Array.isArray(s.content)) cands.push(...s.content);
+        else if (Array.isArray(s.points)) cands.push(...(s.points as unknown[]));
+        else if (Array.isArray(s.items)) cands.push(...(s.items as unknown[]));
+        else if (Array.isArray(s.bullets)) cands.push(...(s.bullets as unknown[]));
+        if (cands.length > 0) {
+          return cands.flatMap(c => {
+            if (typeof c === "string") return c.trim() ? [c.trim()] : [];
+            if (c && typeof c === "object") {
+              // {type:"text", text:"..."} или {text:"..."}
+              const t = (c as Record<string, unknown>).text;
+              if (typeof t === "string" && t.trim()) return [t.trim()];
             }
+            return [];
+          }).filter(Boolean);
+        }
+        if (typeof s.text === "string" && s.text.trim()) {
+          return s.text.split(/\n+/).map(l => l.replace(/^[-•*\d.]+\s*/, "").trim()).filter(Boolean);
+        }
+        return [];
+      };
+
+      const extractTitle = (s: RawSlide): string =>
+        (s.title || s.id || "").toString().trim();
+
+      // Рекурсивно ищем массив объектов с заголовком
+      const findSlideArray = (val: unknown, depth = 0): RawSlide[] | null => {
+        if (depth > 4) return null;
+        if (Array.isArray(val) && val.length > 0) {
+          const first = val[0] as Record<string, unknown>;
+          if (first && (first.title || first.id)) return val as RawSlide[];
+          // Ищем вглубь каждого элемента
+          for (const item of val) {
+            const found = findSlideArray(item, depth + 1);
+            if (found) return found;
           }
-        } catch (_e) { /* пробуем дальше */ }
+        }
+        if (val && typeof val === "object" && !Array.isArray(val)) {
+          for (const v of Object.values(val as Record<string, unknown>)) {
+            const found = findSlideArray(v, depth + 1);
+            if (found) return found;
+          }
+        }
+        return null;
+      };
+
+      let parsed: RawSlide[] | null = null;
+      try {
+        const cleaned = reply.trim().replace(/```json|```/g, "").trim();
+        const raw = JSON.parse(cleaned);
+        parsed = findSlideArray(raw);
+      } catch (_e) {
+        // JSON невалидный — пробуем вырезать массив из текста
+        const m = reply.match(/\[[\s\S]*\]/);
+        if (m) {
+          try { parsed = findSlideArray(JSON.parse(m[0])); } catch (_e2) { /* ignore */ }
+        }
       }
 
       if (!parsed || parsed.length === 0) {
@@ -1651,24 +1673,9 @@ ${text}`;
         throw new Error("Не удалось извлечь слайды из ответа модели");
       }
 
-      // Нормализуем структуру — модель может вернуть "text" вместо "content"
-      type RawSlide = { title?: string; content?: unknown; text?: string; points?: unknown; items?: unknown };
-      const normalizeContent = (s: RawSlide): string[] => {
-        // content — массив строк (правильный формат)
-        if (Array.isArray(s.content) && s.content.length > 0) return s.content.map(String).filter(Boolean);
-        // text — строка с \n (разбиваем на строки)
-        if (typeof s.text === "string" && s.text.trim()) {
-          return s.text.split(/\n+/).map(l => l.replace(/^[-•*]\s*/, "").trim()).filter(Boolean);
-        }
-        // points / items — альтернативные названия массива
-        if (Array.isArray(s.points)) return s.points.map(String).filter(Boolean);
-        if (Array.isArray(s.items)) return s.items.map(String).filter(Boolean);
-        return [];
-      };
-
-      const newSlides = (parsed as RawSlide[])
-        .filter(s => s.title && s.title.trim())  // убираем пустые слайды
-        .map(s => ({ title: (s.title || "").trim(), content: normalizeContent(s) }));
+      const newSlides = parsed
+        .map(s => ({ title: extractTitle(s), content: normalizeContent(s) }))
+        .filter(s => s.title || s.content.length > 0);
       setLessonSlides(newSlides);
       setSlidesDirty(false);
       // Автосохранение после генерации
