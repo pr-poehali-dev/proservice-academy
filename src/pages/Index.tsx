@@ -1614,19 +1614,21 @@ function CoursesView({ user }: { user: User }) {
   const [aiRawResponse, setAiRawResponse] = useState("");
   const [showRegenerateConfirm, setShowRegenerateConfirm] = useState(false);
   const [slidesSavedNotice, setSlidesSavedNotice] = useState(false);
+  const [aiProgress, setAiProgress] = useState<{ current: number; total: number } | null>(null);
 
   const generateSlidesFromAI = async () => {
     if (!editingLesson) return;
     const text = lessonContent.trim();
     setAiError("");
     setAiRawResponse("");
+    setAiProgress(null);
 
     if (!text) {
       setAiError("Сначала заполните поле «Основной контент»");
       return;
     }
 
-    // Парсим теги [СЛАЙД: Заголовок] ... [/СЛАЙД]
+    // ЭТАП 1: Извлечение слайдов из тегов
     const blocks = [...text.matchAll(/\[СЛАЙД:\s*([^\]]+)\]([\s\S]*?)\[\/СЛАЙД\]/gi)];
 
     if (blocks.length === 0) {
@@ -1634,7 +1636,7 @@ function CoursesView({ user }: { user: User }) {
       return;
     }
 
-    const newSlides = blocks.map(match => {
+    const extracted = blocks.map(match => {
       const title = match[1].trim();
       const lines = match[2].split(/\n/).map(l => l.trim()).filter(l => l.length > 0);
       const bullets = lines.filter(l => /^[-•*]/.test(l)).map(l => l.replace(/^[-•*]\s*/, ""));
@@ -1642,10 +1644,67 @@ function CoursesView({ user }: { user: User }) {
       return { title, content, bullets };
     });
 
-    setLessonSlides(newSlides);
+    // ЭТАП 2: Редактура каждого слайда через ИИ
+    const { callAi: ai } = await import("@/lib/ai");
+    const total = extracted.length;
+    const refined = [...extracted];
+    let aiWorked = false;
+
+    for (let i = 0; i < total; i++) {
+      setAiProgress({ current: i + 1, total });
+      const slide = extracted[i];
+      const allPoints = [...slide.content, ...slide.bullets];
+      const prompt = `You are a professional presentation editor. Your task: improve slide text for clarity and visual impact. Output ONLY valid JSON.
+
+Input slide:
+Title: ${slide.title}
+Points: ${allPoints.map((p, n) => `${n + 1}. ${p}`).join("\n")}
+
+Rules for improvement:
+1. Title: max 5 words, specific and punchy
+2. Each point: ONE complete thought, max 7 words
+3. All points same grammatical structure (parallel construction)
+4. Remove filler words and water
+5. Keep original meaning and terminology
+6. Keep language Russian
+7. Points count: same as input (do not add or remove points)
+
+Output format (STRICT JSON only):
+{"title": "...", "content": ["...", "..."]}
+
+No explanations. No markdown. Only JSON.`;
+
+      try {
+        const reply = await ai(prompt, "", 0.2, { num_predict: 512 });
+        const cleaned = reply.trim().replace(/```json|```/g, "").trim();
+        // Вырезаем JSON объект
+        const m = cleaned.match(/\{[\s\S]*\}/);
+        if (m) {
+          const parsed = JSON.parse(m[0]);
+          if (parsed.title && Array.isArray(parsed.content) && parsed.content.length > 0) {
+            refined[i] = {
+              title: parsed.title,
+              content: [],
+              bullets: parsed.content.map(String).filter(Boolean),
+            };
+            aiWorked = true;
+          }
+        }
+      } catch (_e) {
+        // Оставляем слайд без изменений при ошибке
+      }
+    }
+
+    setAiProgress(null);
+
+    if (!aiWorked) {
+      setAiError("ИИ недоступен. Слайды созданы из текста без редактуры. Вы можете отредактировать их вручную.");
+    }
+
+    setLessonSlides(refined);
     setSlidesDirty(false);
     try {
-      await API.apiSaveSlidesBatch(editingLesson.id, newSlides.map(s => ({
+      await API.apiSaveSlidesBatch(editingLesson.id, refined.map(s => ({
         title: s.title,
         content: [...s.content, ...s.bullets.map(b => `• ${b}`)],
       })));
@@ -2197,27 +2256,37 @@ function CoursesView({ user }: { user: User }) {
                     <span className="font-semibold text-foreground text-sm flex items-center gap-2">
                       <Icon name="Monitor" size={15} style={{ color: "#F4720B" }} />
                       Слайды презентации
-                      {lessonSlides.length > 0 && <span className="text-xs font-normal text-muted-foreground">({lessonSlides.length} сл.)</span>}
+                      {lessonSlides.length > 0 && !aiProgress && <span className="text-xs font-normal text-muted-foreground">({lessonSlides.length} сл.)</span>}
                     </span>
                     <div className="flex items-center gap-2">
-                      {lessonSlides.length > 0 ? (
-                        <button onClick={() => setShowRegenerateConfirm(true)}
-                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
-                          style={{ background: "#1B2A4A", color: "white" }}>
-                          <Icon name="RefreshCw" size={12} />Пересоздать из текста
-                        </button>
+                      {aiProgress ? (
+                        /* Индикатор прогресса */
+                        <div className="flex items-center gap-2 text-xs font-medium" style={{ color: "#1B2A4A" }}>
+                          <Icon name="Loader" size={13} className="animate-spin" />
+                          <span>Обработка слайда {aiProgress.current} из {aiProgress.total}...</span>
+                        </div>
                       ) : (
-                        <button onClick={generateSlidesFromAI}
-                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
-                          style={{ background: "#1B2A4A", color: "white" }}>
-                          <Icon name="ScanText" size={12} />Создать из текста
-                        </button>
+                        <>
+                          {lessonSlides.length > 0 ? (
+                            <button onClick={() => setShowRegenerateConfirm(true)}
+                              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
+                              style={{ background: "#1B2A4A", color: "white" }}>
+                              <Icon name="RefreshCw" size={12} />Пересоздать из текста
+                            </button>
+                          ) : (
+                            <button onClick={generateSlidesFromAI}
+                              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
+                              style={{ background: "#1B2A4A", color: "white" }}>
+                              <Icon name="ScanText" size={12} />Создать из текста
+                            </button>
+                          )}
+                          <button onClick={addSlide}
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
+                            style={{ background: "#F4720B", color: "white" }}>
+                            <Icon name="Plus" size={12} />Добавить слайд
+                          </button>
+                        </>
                       )}
-                      <button onClick={addSlide}
-                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
-                        style={{ background: "#F4720B", color: "white" }}>
-                        <Icon name="Plus" size={12} />Добавить слайд
-                      </button>
                     </div>
                   </div>
 
