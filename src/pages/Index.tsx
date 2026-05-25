@@ -1609,26 +1609,32 @@ ${text}`;
       type RawSlide = { title?: string; id?: string; content?: unknown; text?: string; points?: unknown; items?: unknown; bullets?: unknown };
 
       const normalizeContent = (s: RawSlide): string[] => {
-        const cands: unknown[] = [];
-        if (Array.isArray(s.content)) cands.push(...s.content);
-        else if (Array.isArray(s.points)) cands.push(...(s.points as unknown[]));
-        else if (Array.isArray(s.items)) cands.push(...(s.items as unknown[]));
-        else if (Array.isArray(s.bullets)) cands.push(...(s.bullets as unknown[]));
-        if (cands.length > 0) {
-          return cands.flatMap(c => {
-            if (typeof c === "string") return c.trim() ? [c.trim()] : [];
-            if (c && typeof c === "object") {
-              // {type:"text", text:"..."} или {text:"..."}
-              const t = (c as Record<string, unknown>).text;
-              if (typeof t === "string" && t.trim()) return [t.trim()];
-            }
-            return [];
-          }).filter(Boolean);
+        const skip = new Set(["title", "id", "type", "url", "data"]);
+        const obj = s as Record<string, unknown>;
+
+        // Сначала ищем явные массивы (content, points, items, bullets...)
+        for (const [key, val] of Object.entries(obj)) {
+          if (skip.has(key)) continue;
+          if (Array.isArray(val) && val.length > 0) {
+            const lines = val.flatMap((c: unknown) => {
+              if (typeof c === "string") return c.trim() ? [c.trim()] : [];
+              if (c && typeof c === "object") {
+                const t = (c as Record<string, unknown>).text;
+                if (typeof t === "string" && t.trim()) return [t.trim()];
+              }
+              return [];
+            }).filter(Boolean);
+            if (lines.length > 0) return lines;
+          }
         }
-        if (typeof s.text === "string" && s.text.trim()) {
-          return s.text.split(/\n+/).map(l => l.replace(/^[-•*\d.]+\s*/, "").trim()).filter(Boolean);
+
+        // Нет массивов — собираем все строковые поля (symptom, cause, consequence, phrase...)
+        const lines: string[] = [];
+        for (const [key, val] of Object.entries(obj)) {
+          if (skip.has(key)) continue;
+          if (typeof val === "string" && val.trim()) lines.push(val.trim());
         }
-        return [];
+        return lines;
       };
 
       const extractTitle = (s: RawSlide): string =>
