@@ -1595,6 +1595,7 @@ Rules:
 Text to convert:
 ${text}`;
       const reply = await ai(prompt, "", 0.3);
+      console.log("[AI slides] raw reply:", reply);
       // Очищаем ответ перед парсингом
       let cleaned = reply.trim();
       cleaned = cleaned.replace(/```json|```/g, "");
@@ -1616,8 +1617,18 @@ ${text}`;
         setAiRawResponse(reply);
         throw new Error("Модель вернула пустой или неверный массив");
       }
-      setLessonSlides(parsed.map(s => ({ title: s.title || "", content: Array.isArray(s.content) ? s.content : [] })));
-      setSlidesDirty(true);
+      const newSlides = parsed.map((s: { title?: string; content?: string[] }) => ({
+        title: s.title || "",
+        content: Array.isArray(s.content) ? s.content : [],
+      }));
+      setLessonSlides(newSlides);
+      setSlidesDirty(false);
+      // Автосохранение после генерации
+      try {
+        await API.apiSaveSlidesBatch(editingLesson.id, newSlides.filter(s => s.title.trim() || s.content.some(c => c.trim())));
+      } catch (_saveErr) {
+        setSlidesDirty(true);
+      }
     } catch (e) {
       setAiError(String(e));
     }
