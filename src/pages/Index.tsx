@@ -4048,6 +4048,12 @@ function PresentationMode({ onExit }: { onExit: () => void }) {
           <button onClick={handleFullscreen} className="w-8 h-8 rounded-xl flex items-center justify-center transition-all" style={{ background: arrowBg, color: textColor }}>
             <Icon name="Maximize" size={14} />
           </button>
+          <button onClick={() => window.open("/projector", "projector", "width=1280,height=720")}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium transition-all hover:opacity-80"
+            style={{ background: arrowBg, color: textColor }}
+            title="Открыть экран проектора в отдельном окне">
+            <Icon name="Monitor" size={13} />Проектор
+          </button>
           <button onClick={handleExitSlides} className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium transition-all hover:opacity-80" style={{ background: arrowBg, color: textColor }}>
             <Icon name="List" size={13} />К выбору
           </button>
