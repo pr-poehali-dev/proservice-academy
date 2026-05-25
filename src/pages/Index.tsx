@@ -1559,11 +1559,15 @@ function CoursesView({ user }: { user: User }) {
     try {
       await API.apiSaveSlidesBatch(lessonId, lessonSlides.filter(s => s.title.trim() || s.content.some(c => c.trim())));
       setSlidesDirty(false);
+      setSlidesSavedNotice(true);
+      setTimeout(() => setSlidesSavedNotice(false), 2500);
     } catch (_e) { /* ignore */ }
     setSlidesSaving(false);
   };
 
   const [aiRawResponse, setAiRawResponse] = useState("");
+  const [showRegenerateConfirm, setShowRegenerateConfirm] = useState(false);
+  const [slidesSavedNotice, setSlidesSavedNotice] = useState(false);
 
   const generateSlidesFromAI = async () => {
     if (!editingLesson) return;
@@ -1574,21 +1578,39 @@ function CoursesView({ user }: { user: User }) {
     setAiRawResponse("");
     try {
       const { callAi: ai } = await import("@/lib/ai");
-      const prompt = `You are a presentation slide generator. Output ONLY a JSON array. No text before or after.
+      const prompt = `You are a professional educational presentation creator. Your ONLY output must be valid JSON.
+No explanations. No markdown. No extra text.
 
-REQUIRED OUTPUT — a JSON array like this:
-[{"title":"Slide title in Russian","content":["Point 1 in Russian","Point 2 in Russian","Point 3 in Russian"]},{"title":"Second slide","content":["Point 1","Point 2"]}]
+STRICT OUTPUT FORMAT:
+[
+  {
+    "title": "Заголовок слайда на русском",
+    "content": [
+      "Ключевая мысль 1 — конкретная и понятная",
+      "Ключевая мысль 2 — конкретная и понятная",
+      "Ключевая мысль 3 — конкретная и понятная"
+    ]
+  }
+]
 
-STRICT RULES:
-- Output starts with [ and ends with ]
-- Maximum 10 objects in the array
-- Each object has exactly two keys: "title" (string, max 7 words) and "content" (array of 3-5 strings)
-- All text MUST be in Russian language
-- NO markdown, NO explanations, NO extra keys, NO nesting
+RULES:
+1. Language: Russian only. Translate nothing. Use exact terms from the source text.
+2. Slides: 8-12 slides total
+3. First slide: title slide with course topic and 2-3 main goals of the lesson
+4. Each slide covers ONE complete idea or topic
+5. Title: max 6 words, specific and clear
+6. Content: 3-5 points per slide
+7. Each point: ONE complete thought (not a word, not a sentence fragment)
+   Good: "Открытый вопрос даёт развёрнутый ответ"
+   Bad: "Открытые вопросы"
+8. Last slide: key takeaways from the lesson, title "Главное из урока"
+9. Tables in source text: convert to separate slide with key rows as bullet points
+10. Examples from source text: include the most vivid ones as separate points
+11. Output ONLY valid JSON array. No text before [. No text after ]. No \`\`\`json blocks.
 
-Text to convert into slides:
+Source text:
 ${text}`;
-      const reply = await ai(prompt, "", 0.3);
+      const reply = await ai(prompt, "", 0.1, { num_predict: 4096 });
       console.log("[AI slides] raw reply:", reply);
 
       // Извлекаем и парсим JSON
@@ -2179,18 +2201,27 @@ ${text}`;
 
                 {/* Блок Презентация */}
                 <div className="rounded-2xl overflow-hidden" style={{ border: "2px solid #EEF1F7" }}>
-                  <div className="px-4 py-3 flex items-center justify-between" style={{ background: "#F0F3F8" }}>
+                  {/* Шапка */}
+                  <div className="px-4 py-3 flex items-center justify-between flex-wrap gap-2" style={{ background: "#F0F3F8" }}>
                     <span className="font-semibold text-foreground text-sm flex items-center gap-2">
                       <Icon name="Monitor" size={15} style={{ color: "#F4720B" }} />
                       Слайды презентации
-                      {lessonSlides.length > 0 && <span className="text-xs text-muted-foreground">({lessonSlides.length} сл.)</span>}
+                      {lessonSlides.length > 0 && <span className="text-xs font-normal text-muted-foreground">({lessonSlides.length} сл.)</span>}
                     </span>
                     <div className="flex items-center gap-2">
-                      <button onClick={generateSlidesFromAI} disabled={aiGenerating}
-                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all disabled:opacity-50"
-                        style={{ background: "#1B2A4A", color: "white" }}>
-                        {aiGenerating ? <><Icon name="Loader" size={12} className="animate-spin" />Генерация...</> : <><Icon name="Sparkles" size={12} />Создать через AI</>}
-                      </button>
+                      {lessonSlides.length > 0 ? (
+                        <button onClick={() => setShowRegenerateConfirm(true)} disabled={aiGenerating}
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all disabled:opacity-50"
+                          style={{ background: "#1B2A4A", color: "white" }}>
+                          {aiGenerating ? <><Icon name="Loader" size={12} className="animate-spin" />Генерация...</> : <><Icon name="RefreshCw" size={12} />Перегенерировать</>}
+                        </button>
+                      ) : (
+                        <button onClick={generateSlidesFromAI} disabled={aiGenerating}
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all disabled:opacity-50"
+                          style={{ background: "#1B2A4A", color: "white" }}>
+                          {aiGenerating ? <><Icon name="Loader" size={12} className="animate-spin" />Генерация...</> : <><Icon name="Sparkles" size={12} />Создать через AI</>}
+                        </button>
+                      )}
                       <button onClick={addSlide}
                         className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
                         style={{ background: "#F4720B", color: "white" }}>
@@ -2199,6 +2230,25 @@ ${text}`;
                     </div>
                   </div>
 
+                  {/* Confirm перегенерации */}
+                  {showRegenerateConfirm && (
+                    <div className="px-4 py-3 flex items-center justify-between gap-3 flex-wrap" style={{ background: "#FFF7ED", borderTop: "1px solid #FDE68A" }}>
+                      <span className="text-xs text-foreground">Все текущие слайды будут заменены. Продолжить?</span>
+                      <div className="flex gap-2">
+                        <button onClick={() => setShowRegenerateConfirm(false)}
+                          className="px-3 py-1.5 rounded-lg text-xs font-medium" style={{ background: "#F0F3F8", color: "#6B7280" }}>
+                          Отмена
+                        </button>
+                        <button onClick={() => { setShowRegenerateConfirm(false); generateSlidesFromAI(); }} disabled={aiGenerating}
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-white disabled:opacity-50"
+                          style={{ background: "#F4720B" }}>
+                          <Icon name="Sparkles" size={12} />Да, перегенерировать
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Ошибка AI */}
                   {aiError && (
                     <div className="px-4 py-3 text-xs space-y-2" style={{ background: "#FEF2F2", borderTop: "1px solid #FECACA" }}>
                       <div className="flex items-center gap-2 font-medium" style={{ color: "#DC2626" }}>
@@ -2215,62 +2265,64 @@ ${text}`;
                     </div>
                   )}
 
+                  {/* Список слайдов */}
                   {slidesLoading ? (
-                    <div className="p-4 text-center text-sm text-muted-foreground">
+                    <div className="p-5 text-center text-sm text-muted-foreground">
                       <Icon name="Loader" size={16} className="animate-spin inline mr-1" />Загрузка слайдов...
                     </div>
                   ) : lessonSlides.length === 0 ? (
-                    <div className="p-6 text-center text-sm text-muted-foreground">
-                      Слайды не добавлены. Создайте вручную или через AI.
+                    <div className="p-8 text-center text-sm text-muted-foreground space-y-1">
+                      <Icon name="Monitor" size={24} className="mx-auto mb-2 opacity-30" />
+                      <div>Слайды не добавлены.</div>
+                      <div className="text-xs">Создайте через AI или добавьте вручную.</div>
                     </div>
                   ) : (
-                    <div className="p-3 space-y-3 max-h-80 overflow-y-auto">
+                    <div className="p-3 space-y-2 max-h-[500px] overflow-y-auto">
                       {lessonSlides.map((slide, idx) => (
-                        <div key={idx} className="rounded-xl p-3 space-y-2" style={{ background: "white", border: "1.5px solid #E0E5EF" }}>
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs font-bold text-muted-foreground w-5 text-center">{idx + 1}</span>
+                        <div key={idx} className="rounded-xl overflow-hidden" style={{ border: "1.5px solid #E0E5EF" }}>
+                          {/* Заголовок карточки */}
+                          <div className="flex items-center gap-2 px-3 py-2" style={{ background: "#F8F9FB" }}>
+                            <span className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold text-white shrink-0"
+                              style={{ background: "#F4720B" }}>{idx + 1}</span>
                             <input value={slide.title} onChange={e => updateSlideTitle(idx, e.target.value)}
-                              placeholder="Заголовок слайда"
-                              className="flex-1 px-2 py-1.5 rounded-lg text-sm font-medium text-foreground outline-none"
-                              style={{ background: "#F8F9FB", border: "1px solid #E0E5EF" }} />
+                              placeholder="Заголовок слайда..."
+                              className="flex-1 bg-transparent text-sm font-semibold text-foreground outline-none" />
                             <button onClick={() => moveSlide(idx, -1)} disabled={idx === 0}
-                              className="w-6 h-6 rounded flex items-center justify-center text-muted-foreground disabled:opacity-30 hover:text-foreground">
+                              className="w-6 h-6 rounded flex items-center justify-center text-muted-foreground disabled:opacity-20 hover:text-foreground shrink-0">
                               <Icon name="ChevronUp" size={13} />
                             </button>
                             <button onClick={() => moveSlide(idx, 1)} disabled={idx === lessonSlides.length - 1}
-                              className="w-6 h-6 rounded flex items-center justify-center text-muted-foreground disabled:opacity-30 hover:text-foreground">
+                              className="w-6 h-6 rounded flex items-center justify-center text-muted-foreground disabled:opacity-20 hover:text-foreground shrink-0">
                               <Icon name="ChevronDown" size={13} />
                             </button>
                             <button onClick={() => removeSlide(idx)}
-                              className="w-6 h-6 rounded flex items-center justify-center transition-all hover:bg-red-50"
+                              className="w-6 h-6 rounded flex items-center justify-center transition-all hover:bg-red-50 shrink-0"
                               style={{ color: "#DC2626" }}>
-                              <Icon name="X" size={13} />
+                              <Icon name="Trash2" size={13} />
                             </button>
                           </div>
-                          <div className="pl-7 space-y-1">
-                            {slide.content.map((line, li) => (
-                              <div key={li} className="flex items-center gap-1">
-                                <span className="text-muted-foreground text-xs">•</span>
-                                <input value={line} onChange={e => {
-                                  const newContent = [...slide.content];
-                                  newContent[li] = e.target.value;
-                                  updateSlideContent(idx, newContent);
-                                }}
+                          {/* Тезисы */}
+                          <div className="px-3 pb-2 pt-1 space-y-1 bg-white">
+                            {(slide.content || []).map((line, li) => (
+                              <div key={li} className="flex items-center gap-2">
+                                <span className="text-muted-foreground text-xs shrink-0" style={{ color: "#F4720B" }}>→</span>
+                                <input value={line}
+                                  onChange={e => { const nc = [...slide.content]; nc[li] = e.target.value; updateSlideContent(idx, nc); }}
                                   onKeyDown={e => {
-                                    if (e.key === "Enter") { const nc = [...slide.content]; nc.splice(li + 1, 0, ""); updateSlideContent(idx, nc); }
+                                    if (e.key === "Enter") { e.preventDefault(); const nc = [...slide.content]; nc.splice(li + 1, 0, ""); updateSlideContent(idx, nc); }
                                     if (e.key === "Backspace" && line === "" && slide.content.length > 1) { const nc = slide.content.filter((_, i) => i !== li); updateSlideContent(idx, nc); }
                                   }}
                                   placeholder="Тезис..."
-                                  className="flex-1 px-2 py-1 rounded text-sm text-foreground outline-none"
-                                  style={{ background: "#F8F9FB", border: "1px solid #E0E5EF" }} />
+                                  className="flex-1 py-1 text-sm text-foreground outline-none bg-transparent" />
                                 <button onClick={() => { const nc = slide.content.filter((_, i) => i !== li); if (nc.length === 0) nc.push(""); updateSlideContent(idx, nc); }}
-                                  className="w-5 h-5 flex items-center justify-center text-muted-foreground hover:text-red-500 opacity-60">
+                                  className="w-5 h-5 flex items-center justify-center text-muted-foreground hover:text-red-500 opacity-50 hover:opacity-100 shrink-0">
                                   <Icon name="X" size={11} />
                                 </button>
                               </div>
                             ))}
-                            <button onClick={() => updateSlideContent(idx, [...slide.content, ""])}
-                              className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 mt-1">
+                            <button onClick={() => updateSlideContent(idx, [...(slide.content || []), ""])}
+                              className="text-xs flex items-center gap-1 mt-1.5 transition-colors hover:text-foreground"
+                              style={{ color: "#F4720B" }}>
                               <Icon name="Plus" size={11} />Добавить тезис
                             </button>
                           </div>
@@ -2279,16 +2331,25 @@ ${text}`;
                     </div>
                   )}
 
-                  {slidesDirty && editingLesson && (
-                    <div className="px-4 py-3 border-t flex items-center justify-between" style={{ borderColor: "#EEF1F7" }}>
+                  {/* Футер: сохранение */}
+                  <div className="px-4 py-3 border-t flex items-center justify-between gap-3" style={{ borderColor: "#EEF1F7" }}>
+                    {slidesSavedNotice ? (
+                      <span className="text-xs font-medium flex items-center gap-1.5" style={{ color: "#059669" }}>
+                        <Icon name="CheckCircle" size={13} />Слайды сохранены
+                      </span>
+                    ) : slidesDirty ? (
                       <span className="text-xs text-muted-foreground">Есть несохранённые изменения</span>
-                      <button onClick={() => saveSlides(editingLesson.id)} disabled={slidesSaving}
-                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-white transition-all disabled:opacity-50"
+                    ) : (
+                      <span className="text-xs text-muted-foreground">{lessonSlides.length > 0 ? "Все изменения сохранены" : ""}</span>
+                    )}
+                    {editingLesson && (
+                      <button onClick={() => saveSlides(editingLesson.id)} disabled={slidesSaving || !slidesDirty}
+                        className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-medium text-white transition-all disabled:opacity-40"
                         style={{ background: "#059669" }}>
                         {slidesSaving ? <><Icon name="Loader" size={11} className="animate-spin" />Сохранение...</> : <><Icon name="Save" size={11} />Сохранить слайды</>}
                       </button>
-                    </div>
-                  )}
+                    )}
+                  </div>
                 </div>
               </div>
               <div className="flex gap-3 p-6 border-t border-border/50">

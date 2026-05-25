@@ -30,7 +30,7 @@ export function saveAiSettingsToStorage(settings: AiSettings): void {
   localStorage.setItem(AI_SETTINGS_KEY, JSON.stringify(settings));
 }
 
-export async function callAi(prompt: string, system = "", temperature = 0.7): Promise<string> {
+export async function callAi(prompt: string, system = "", temperature = 0.7, options: Record<string, unknown> = {}): Promise<string> {
   const s = getAiSettings();
   if (s.provider === "ollama") {
     const res = await fetch(`${s.ollamaUrl}/api/chat`, {
@@ -40,7 +40,7 @@ export async function callAi(prompt: string, system = "", temperature = 0.7): Pr
         model: s.ollamaModel,
         stream: false,
         format: "json",
-        options: { temperature },
+        options: { temperature, ...options },
         messages: [
           ...(system ? [{ role: "system", content: system }] : []),
           { role: "user", content: prompt },
