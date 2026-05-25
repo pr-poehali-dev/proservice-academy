@@ -4078,47 +4078,67 @@ function PresentationMode({ onExit }: { onExit: () => void }) {
           </div>
         ) : (
           /* ── Обычный слайд ── */
-          <div className="flex flex-col h-full px-10 lg:px-16 py-8">
-            {/* Заголовок */}
-            <div className="shrink-0 mb-5">
-              <h2 style={{ fontSize: "clamp(24px, 3vw, 38px)", fontWeight: 700, lineHeight: 1.2, color: textColor, marginBottom: 14 }}>
-                {current.title}
-              </h2>
-              <div style={{ height: 3, width: 60, borderRadius: 2, background: "#FF6B2B" }} />
-            </div>
+          (() => {
+            // Парсер инлайн-разметки: **жирный**
+            const renderInline = (text: string): React.ReactNode => {
+              const parts = text.split(/(\*\*[^*]+\*\*)/g);
+              return parts.map((p, i) =>
+                p.startsWith("**") && p.endsWith("**")
+                  ? <strong key={i}>{p.slice(2, -2)}</strong>
+                  : p
+              );
+            };
 
-            {/* Контент */}
-            <div className="flex-1 flex flex-col justify-center gap-4 overflow-auto">
-              {/* Абзацы */}
-              {(current.content || []).filter(l => l.trim()).map((para, i) => (
-                <p key={`p-${i}`} style={{ fontSize: "clamp(15px, 1.8vw, 19px)", lineHeight: 1.65, color: darkTheme ? "#c8d4e8" : "#444" }}>
-                  {para}
-                </p>
-              ))}
+            // Все строки из content и bullets объединяем и парсим заново
+            // content может содержать смешанный текст с переносами
+            const allLines = [
+              ...(current.content || []),
+              ...(current.bullets || []).map(b => `- ${b}`),
+            ];
 
-              {/* Разделитель если есть и абзацы и пункты */}
-              {(current.content || []).filter(l => l.trim()).length > 0 && (current.bullets || []).filter(l => l.trim()).length > 0 && (
-                <div style={{ height: 1, background: darkTheme ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.08)", margin: "4px 0" }} />
-              )}
+            // Разбиваем на элементы для рендера
+            type SlideEl = { kind: "bullet"; text: string } | { kind: "para"; text: string } | { kind: "gap" };
+            const elements: SlideEl[] = [];
+            for (const line of allLines) {
+              if (!line.trim()) { elements.push({ kind: "gap" }); continue; }
+              if (/^[-*•]\s/.test(line)) {
+                elements.push({ kind: "bullet", text: line.replace(/^[-*•]\s*/, "") });
+              } else {
+                elements.push({ kind: "para", text: line });
+              }
+            }
 
-              {/* Пункты с маркерами */}
-              {(current.bullets || []).filter(l => l.trim()).map((line, i) => (
-                <div key={`b-${i}`} className="flex items-start gap-3">
-                  <span className="shrink-0 mt-0.5" style={{ color: "#FF6B2B", fontSize: 20, fontWeight: 700, lineHeight: 1.4 }}>→</span>
-                  <span style={{ fontSize: "clamp(15px, 1.8vw, 19px)", lineHeight: 1.6, color: darkTheme ? "#dde4f0" : "#333" }}>
-                    {line}
-                  </span>
+            const textSz = "clamp(15px, 1.8vw, 19px)";
+            const paraColor = darkTheme ? "#c8d4e8" : "#444";
+            const bulletColor = darkTheme ? "#dde4f0" : "#333";
+
+            return (
+              <div className="flex flex-col h-full px-10 lg:px-16 py-8">
+                <div className="shrink-0 mb-5">
+                  <h2 style={{ fontSize: "clamp(24px, 3vw, 38px)", fontWeight: 700, lineHeight: 1.2, color: textColor, marginBottom: 14 }}>
+                    {current.title}
+                  </h2>
+                  <div style={{ height: 3, width: 60, borderRadius: 2, background: "#FF6B2B" }} />
                 </div>
-              ))}
-
-              {/* Если совсем пусто */}
-              {(current.content || []).filter(l => l.trim()).length === 0 && (current.bullets || []).filter(l => l.trim()).length === 0 && (
-                <p style={{ color: darkTheme ? "rgba(255,255,255,0.25)" : "rgba(0,0,0,0.2)", fontSize: 17, fontStyle: "italic" }}>
-                  Нет содержимого
-                </p>
-              )}
-            </div>
-          </div>
+                <div className="flex-1 flex flex-col justify-center gap-3 overflow-auto">
+                  {elements.length === 0 ? (
+                    <p style={{ color: darkTheme ? "rgba(255,255,255,0.25)" : "rgba(0,0,0,0.2)", fontSize: 17, fontStyle: "italic" }}>Нет содержимого</p>
+                  ) : elements.map((el, i) => {
+                    if (el.kind === "gap") return <div key={i} style={{ height: 8 }} />;
+                    if (el.kind === "bullet") return (
+                      <div key={i} className="flex items-start gap-3">
+                        <span className="shrink-0 mt-0.5" style={{ color: "#FF6B2B", fontSize: 20, fontWeight: 700, lineHeight: 1.4 }}>→</span>
+                        <span style={{ fontSize: textSz, lineHeight: 1.6, color: bulletColor }}>{renderInline(el.text)}</span>
+                      </div>
+                    );
+                    return (
+                      <p key={i} style={{ fontSize: textSz, lineHeight: 1.65, color: paraColor }}>{renderInline(el.text)}</p>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })()
         )}
       </div>
 
