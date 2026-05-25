@@ -508,11 +508,118 @@ const MOCK_FORUM: ForumTopic[] = [
   },
 ];
 
-const SLIDE_DATA = [
-  { id: 1, title: "Формула идеального приёма", subtitle: "Урок 3: Работа с клиентом", content: ["Внимание — первые 30 секунд решают всё", "Встречайте клиента стоя, называйте по имени", "Осмотр вместе с клиентом — не без него", "Каждый дефект фиксируется письменно"] },
-  { id: 2, title: "Чек-лист осмотра автомобиля", subtitle: "Порядок действий", content: ["Внешний осмотр кузова (фото 360°)", "Проверка уровней технических жидкостей", "Осмотр салона и электрооборудования", "Тест-драйв при наличии жалоб на ходовую", "Подпись акта приёма клиентом"] },
-  { id: 3, title: "Работа с возражением «дорого»", subtitle: "Практический приём", content: ["Не спорить — согласиться с чувством клиента", "Задать уточняющий вопрос: по сравнению с чем?", "Показать ценность через последствия бездействия", "Предложить альтернативу или рассрочку"] },
-];
+// ─── Presentation: парсер markdown → слайды ───────────────────────────────────
+type SlideType = "title" | "section" | "list" | "table" | "summary";
+interface Slide {
+  type: SlideType;
+  heading?: string;
+  lines: string[];
+  // для списков: сколько пунктов показывать (animate step)
+  listStep?: number;
+}
+
+const LINES_PER_SLIDE = 7;
+
+function parseLessonToSlides(lesson: { title: string; content?: string; summary?: string }): Slide[] {
+  const slides: Slide[] = [];
+
+  // Слайд 1: титульный
+  slides.push({ type: "title", lines: [lesson.title] });
+
+  const text = lesson.content || lesson.summary || "";
+  if (!text.trim()) return slides;
+
+  const rawLines = text.split("\n");
+  let currentHeading = "";
+  let currentLines: string[] = [];
+  let listItems: string[] = [];
+  let inTable = false;
+  let tableLines: string[] = [];
+
+  const flushSection = () => {
+    if (currentLines.length === 0) return;
+    // Разбиваем на слайды по LINES_PER_SLIDE строк
+    for (let i = 0; i < currentLines.length; i += LINES_PER_SLIDE) {
+      slides.push({
+        type: "section",
+        heading: currentHeading,
+        lines: currentLines.slice(i, i + LINES_PER_SLIDE),
+      });
+    }
+    currentLines = [];
+  };
+
+  const flushList = () => {
+    if (listItems.length === 0) return;
+    slides.push({ type: "list", heading: currentHeading, lines: [...listItems], listStep: 0 });
+    listItems = [];
+  };
+
+  const flushTable = () => {
+    if (tableLines.length === 0) return;
+    slides.push({ type: "table", heading: currentHeading, lines: [...tableLines] });
+    tableLines = [];
+    inTable = false;
+  };
+
+  for (const raw of rawLines) {
+    const line = raw.trimEnd();
+
+    // Заголовок ### или ## или #
+    if (/^#{1,3}\s/.test(line)) {
+      flushSection();
+      flushList();
+      flushTable();
+      currentHeading = line.replace(/^#{1,3}\s+/, "").trim();
+      currentLines = [];
+      continue;
+    }
+
+    // Строка таблицы (| ... |)
+    if (line.startsWith("|")) {
+      flushSection();
+      flushList();
+      inTable = true;
+      tableLines.push(line);
+      continue;
+    } else if (inTable) {
+      flushTable();
+    }
+
+    // Маркированный или нумерованный список
+    if (/^[-*•]\s/.test(line) || /^\d+\.\s/.test(line)) {
+      flushSection();
+      listItems.push(line.replace(/^[-*•]\s+/, "").replace(/^\d+\.\s+/, "").trim());
+      continue;
+    } else if (listItems.length > 0 && line.trim() !== "") {
+      flushList();
+    }
+
+    // Итог урока — отдельный слайд
+    if (/итог|вывод|заключение/i.test(currentHeading) && line.trim()) {
+      flushSection();
+      flushList();
+      currentLines.push(line.trim());
+      continue;
+    }
+
+    if (line.trim()) currentLines.push(line.trim());
+  }
+
+  flushSection();
+  flushList();
+  flushTable();
+
+  // Если есть summary и content разные — добавим summary как последний слайд
+  if (lesson.summary && lesson.content && lesson.summary !== lesson.content && lesson.summary.trim()) {
+    const summaryLines = lesson.summary.split("\n").map(l => l.trim()).filter(Boolean);
+    for (let i = 0; i < summaryLines.length; i += LINES_PER_SLIDE) {
+      slides.push({ type: "summary", heading: "Итог урока", lines: summaryLines.slice(i, i + LINES_PER_SLIDE) });
+    }
+  }
+
+  return slides;
+}
 
 // ─── Login Page ───────────────────────────────────────────────────────────────
 function LoginPage({ onLogin }: { onLogin: (user: User) => void }) {
@@ -2934,86 +3041,327 @@ function Watermark({ name }: { name: string }) {
 
 // ─── Presentation Mode ────────────────────────────────────────────────────────
 function PresentationMode({ onExit }: { onExit: () => void }) {
-  const [slide, setSlide] = useState(0);
+  // ШАГ 1: выбор курса/урока
+  const [courses, setCourses] = useState<Course[]>([]);
+  const [selectedCourseId, setSelectedCourseId] = useState<number | null>(null);
+  const [selectedLessonId, setSelectedLessonId] = useState<number | null>(null);
+  const [slides, setSlides] = useState<Slide[] | null>(null);
+  const [loadingCourses, setLoadingCourses] = useState(true);
+
+  // ШАГ 2: презентация
+  const [slideIdx, setSlideIdx] = useState(0);
+  const [listStep, setListStep] = useState(0);
   const [darkTheme, setDarkTheme] = useState(true);
-  const current = SLIDE_DATA[slide];
+
+  useEffect(() => {
+    API.apiGetCourses().then(raw => {
+      const mapped = (raw as Record<string, unknown>[]).map(c => {
+        const rawLessons = (c.lessons as Record<string, unknown>[]) || [];
+        return {
+          id: c.id as number,
+          title: c.title as string,
+          description: c.description as string,
+          progress: 0,
+          studentsCount: 0,
+          lessons: rawLessons.map(l => ({
+            id: l.id as number,
+            title: l.title as string,
+            duration: (l.duration as string || ''),
+            completed: false,
+            hasHomework: l.has_homework as boolean,
+            status: (l.status as 'draft' | 'published') || 'published',
+            order: l.sort_order as number,
+            content: l.content as string,
+            summary: l.summary as string,
+            homework: l.homework as string,
+            cheatsheet: l.cheatsheet as string,
+          })),
+        } as Course;
+      });
+      setCourses(mapped);
+    }).catch(() => {}).finally(() => setLoadingCourses(false));
+  }, []);
+
+  const selectedCourse = courses.find(c => c.id === selectedCourseId) ?? null;
+  const availableLessons = selectedCourse?.lessons.filter(l => l.status === "published") ?? [];
+  const selectedLesson = availableLessons.find(l => l.id === selectedLessonId) ?? null;
+
+  const handleStart = () => {
+    if (!selectedLesson) return;
+    const generated = parseLessonToSlides({ title: selectedLesson.title, content: selectedLesson.content, summary: selectedLesson.summary });
+    setSlides(generated);
+    setSlideIdx(0);
+    setListStep(0);
+  };
+
+  const handleExitSlides = () => {
+    setSlides(null);
+    setSlideIdx(0);
+    setListStep(0);
+  };
 
   const bg = darkTheme ? "#1B2A4A" : "#FFFFFF";
   const textColor = darkTheme ? "white" : "#1B2A4A";
   const subColor = darkTheme ? "rgba(255,255,255,0.6)" : "rgba(27,42,74,0.5)";
+  const cardBg = darkTheme ? "rgba(255,255,255,0.07)" : "rgba(27,42,74,0.05)";
   const arrowBg = darkTheme ? "rgba(255,255,255,0.15)" : "rgba(27,42,74,0.08)";
-  const dotInactive = darkTheme ? "rgba(255,255,255,0.3)" : "rgba(27,42,74,0.2)";
+  const dotInactive = darkTheme ? "rgba(255,255,255,0.25)" : "rgba(27,42,74,0.18)";
 
   const handleFullscreen = () => {
-    if (!document.fullscreenElement) {
-      document.documentElement.requestFullscreen();
+    if (!document.fullscreenElement) document.documentElement.requestFullscreen();
+    else document.exitFullscreen();
+  };
+
+  // ─── ШАГ 1: экран выбора ────────────────────────────────────────────────────
+  if (!slides) {
+    return (
+      <div className="fixed inset-0 flex flex-col items-center justify-center p-8" style={{ background: "#1B2A4A", zIndex: 9999 }}>
+        <div className="w-full max-w-lg">
+          <div className="flex items-center gap-3 mb-10">
+            <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: "#F4720B" }}>
+              <Icon name="Monitor" size={18} className="text-white" />
+            </div>
+            <span className="text-white font-bold text-xl">Презентация урока</span>
+          </div>
+
+          {loadingCourses ? (
+            <div className="flex items-center gap-2 text-white/60">
+              <Icon name="Loader" size={18} className="animate-spin" />Загрузка курсов...
+            </div>
+          ) : (
+            <div className="space-y-5">
+              <div>
+                <label className="text-white/70 text-sm font-medium mb-2 block">Выберите курс</label>
+                <select
+                  value={selectedCourseId ?? ""}
+                  onChange={e => { setSelectedCourseId(Number(e.target.value) || null); setSelectedLessonId(null); }}
+                  className="w-full px-4 py-3 rounded-xl text-white text-[15px] outline-none appearance-none cursor-pointer"
+                  style={{ background: "rgba(255,255,255,0.1)", border: "1.5px solid rgba(255,255,255,0.15)" }}>
+                  <option value="">— выберите курс —</option>
+                  {courses.map(c => <option key={c.id} value={c.id}>{c.title}</option>)}
+                </select>
+              </div>
+
+              {selectedCourse && (
+                <div>
+                  <label className="text-white/70 text-sm font-medium mb-2 block">Выберите урок</label>
+                  <select
+                    value={selectedLessonId ?? ""}
+                    onChange={e => setSelectedLessonId(Number(e.target.value) || null)}
+                    className="w-full px-4 py-3 rounded-xl text-white text-[15px] outline-none appearance-none cursor-pointer"
+                    style={{ background: "rgba(255,255,255,0.1)", border: "1.5px solid rgba(255,255,255,0.15)" }}>
+                    <option value="">— выберите урок —</option>
+                    {availableLessons.map(l => <option key={l.id} value={l.id}>{l.title}</option>)}
+                  </select>
+                </div>
+              )}
+
+              <div className="flex gap-3 pt-2">
+                <button onClick={handleStart} disabled={!selectedLesson}
+                  className="flex-1 flex items-center justify-center gap-2 py-3.5 rounded-xl font-semibold text-white transition-all disabled:opacity-40 hover:opacity-90"
+                  style={{ background: "#F4720B" }}>
+                  <Icon name="Play" size={18} />
+                  Начать презентацию
+                </button>
+                <button onClick={onExit}
+                  className="px-5 py-3.5 rounded-xl font-medium transition-all hover:opacity-80"
+                  style={{ background: "rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.7)" }}>
+                  Выйти
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // ─── ШАГ 2: презентация слайдов ─────────────────────────────────────────────
+  const current = slides[slideIdx];
+  const totalSlides = slides.length;
+
+  const goNext = () => {
+    if (current.type === "list" && listStep < current.lines.length - 1) {
+      setListStep(s => s + 1);
     } else {
-      document.exitFullscreen();
+      setSlideIdx(s => Math.min(totalSlides - 1, s + 1));
+      setListStep(0);
     }
   };
 
-  return (
-    <div className="fixed inset-0 flex flex-col no-copy" style={{ background: bg, zIndex: 9999, transition: "background 0.3s" }} onContextMenu={e => e.preventDefault()}>
-      <div className="flex items-center justify-between px-8 pt-6">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" style={{ background: "#F4720B" }}>
-            <Icon name="Settings" size={18} className="text-white" />
+  const goPrev = () => {
+    if (current.type === "list" && listStep > 0) {
+      setListStep(s => s - 1);
+    } else {
+      setSlideIdx(s => Math.max(0, s - 1));
+      setListStep(0);
+    }
+  };
+
+  const isLastStep = current.type === "list" ? listStep >= current.lines.length - 1 : true;
+  const isFirst = slideIdx === 0 && (current.type !== "list" || listStep === 0);
+  const isLast = slideIdx === totalSlides - 1 && isLastStep;
+
+  const renderSlideContent = () => {
+    if (current.type === "title") {
+      return (
+        <div className="flex flex-col items-center justify-center h-full text-center px-8">
+          <div className="text-sm font-medium mb-6 px-4 py-1.5 rounded-full" style={{ background: "rgba(244,114,11,0.2)", color: "#F4720B" }}>
+            {selectedCourse?.title}
           </div>
-          <span className="text-sm font-medium" style={{ color: subColor }}>{current.subtitle}</span>
+          <h1 className="text-5xl lg:text-6xl font-bold leading-tight" style={{ color: textColor }}>
+            {current.lines[0]}
+          </h1>
         </div>
-        <div className="flex items-center gap-2">
-          <span className="text-sm mr-2" style={{ color: subColor }}>{slide + 1} / {SLIDE_DATA.length}</span>
-          {/* Тема */}
+      );
+    }
+
+    if (current.type === "list") {
+      return (
+        <div className="px-8 lg:px-16 py-8 flex flex-col h-full justify-center">
+          {current.heading && (
+            <h2 className="text-2xl lg:text-3xl font-bold mb-8" style={{ color: "#F4720B" }}>{current.heading}</h2>
+          )}
+          <div className="space-y-4">
+            {current.lines.slice(0, listStep + 1).map((item, i) => (
+              <div key={i} className="flex items-start gap-4 animate-fade-in">
+                <span className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold shrink-0" style={{ background: "#F4720B", color: "white" }}>
+                  {i + 1}
+                </span>
+                <span className="text-xl lg:text-2xl leading-relaxed pt-0.5" style={{ color: darkTheme ? "rgba(255,255,255,0.9)" : "rgba(27,42,74,0.85)" }}>
+                  {item}
+                </span>
+              </div>
+            ))}
+          </div>
+          <div className="mt-6 text-sm" style={{ color: subColor }}>
+            {listStep + 1} / {current.lines.length}
+          </div>
+        </div>
+      );
+    }
+
+    if (current.type === "table") {
+      const rows = current.lines.filter(l => !l.match(/^[\s|:-]+$/));
+      return (
+        <div className="px-8 lg:px-16 py-8 flex flex-col h-full justify-center overflow-auto">
+          {current.heading && (
+            <h2 className="text-2xl font-bold mb-6" style={{ color: "#F4720B" }}>{current.heading}</h2>
+          )}
+          <div className="overflow-x-auto rounded-xl" style={{ background: cardBg }}>
+            <table className="w-full text-sm">
+              <tbody>
+                {rows.map((row, ri) => {
+                  const cells = row.split("|").filter(c => c.trim());
+                  return (
+                    <tr key={ri} style={{ borderBottom: `1px solid ${darkTheme ? "rgba(255,255,255,0.08)" : "rgba(27,42,74,0.08)"}` }}>
+                      {cells.map((cell, ci) => (
+                        <td key={ci} className={`px-4 py-3 ${ri === 0 ? "font-semibold" : ""}`}
+                          style={{ color: ri === 0 ? "#F4720B" : textColor }}>
+                          {cell.trim()}
+                        </td>
+                      ))}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      );
+    }
+
+    // section / summary
+    return (
+      <div className="px-8 lg:px-16 py-8 flex flex-col h-full justify-center">
+        {current.heading && (
+          <h2 className="text-2xl lg:text-3xl font-bold mb-8" style={{ color: current.type === "summary" ? "#F4720B" : textColor }}>
+            {current.heading}
+          </h2>
+        )}
+        <div className="space-y-4">
+          {current.lines.map((line, i) => (
+            <p key={i} className="text-lg lg:text-xl leading-relaxed" style={{ color: darkTheme ? "rgba(255,255,255,0.88)" : "rgba(27,42,74,0.82)" }}>
+              {line}
+            </p>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <div className="fixed inset-0 flex flex-col no-copy" style={{ background: bg, zIndex: 9999, transition: "background 0.3s" }}
+      onContextMenu={e => e.preventDefault()}
+      onKeyDown={e => { if (e.key === "ArrowRight" || e.key === " ") goNext(); if (e.key === "ArrowLeft") goPrev(); }}
+      tabIndex={0}>
+      {/* Верхняя панель */}
+      <div className="flex items-center justify-between px-6 py-4 shrink-0" style={{ borderBottom: `1px solid ${darkTheme ? "rgba(255,255,255,0.08)" : "rgba(27,42,74,0.08)"}` }}>
+        <div className="flex items-center gap-3 min-w-0 flex-1">
+          <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ background: "#F4720B" }}>
+            <Icon name="Monitor" size={14} className="text-white" />
+          </div>
+          <span className="text-sm font-medium truncate" style={{ color: subColor }}>
+            {selectedLesson?.title}
+          </span>
+        </div>
+        <div className="flex items-center gap-2 shrink-0 ml-4">
+          <span className="text-sm font-medium" style={{ color: subColor }}>{slideIdx + 1} / {totalSlides}</span>
           <button onClick={() => setDarkTheme(v => !v)}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium transition-all"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium transition-all"
             style={{ background: arrowBg, color: textColor }}>
-            <Icon name={darkTheme ? "Sun" : "Moon"} size={15} />
+            <Icon name={darkTheme ? "Sun" : "Moon"} size={13} />
             {darkTheme ? "Светлый" : "Тёмный"}
           </button>
-          {/* Полный экран */}
           <button onClick={handleFullscreen}
-            className="w-9 h-9 rounded-xl flex items-center justify-center transition-all"
+            className="w-8 h-8 rounded-xl flex items-center justify-center transition-all"
             style={{ background: arrowBg, color: textColor }}>
-            <Icon name="Maximize" size={16} />
+            <Icon name="Maximize" size={14} />
           </button>
-          <button onClick={onExit} className="flex items-center gap-2 px-4 py-2.5 rounded-xl font-semibold text-sm transition-all hover:opacity-80"
-            style={{ background: "#F4720B", color: "white" }}>
-            <Icon name="X" size={15} />
+          <button onClick={handleExitSlides}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium transition-all hover:opacity-80"
+            style={{ background: arrowBg, color: textColor }}>
+            <Icon name="List" size={13} />
+            К выбору
+          </button>
+          <button onClick={onExit}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium text-white transition-all hover:opacity-80"
+            style={{ background: "#F4720B" }}>
+            <Icon name="X" size={13} />
             Выйти
           </button>
         </div>
       </div>
 
-      <div className="flex-1 flex items-center justify-center p-12">
-        <div className="max-w-4xl w-full animate-fade-in" key={slide}>
-          <h1 className="text-5xl lg:text-6xl font-bold mb-10 leading-tight" style={{ color: textColor }}>{current.title}</h1>
-          <div className="space-y-5">
-            {current.content.map((item, i) => (
-              <div key={i} className="flex items-start gap-4 text-xl lg:text-2xl leading-relaxed" style={{ color: darkTheme ? "rgba(255,255,255,0.9)" : "rgba(27,42,74,0.85)" }}>
-                <span className="text-2xl font-bold shrink-0 mt-0.5" style={{ color: "#F4720B" }}>→</span>
-                {item}
-              </div>
-            ))}
-          </div>
-        </div>
+      {/* Контент слайда */}
+      <div className="flex-1 overflow-hidden" key={`${slideIdx}-${listStep}`} style={{ animation: "fadeIn 0.25s ease" }}>
+        {renderSlideContent()}
       </div>
 
-      <div className="flex items-center justify-center gap-6 pb-8">
-        <button onClick={() => setSlide(s => Math.max(0, s - 1))} disabled={slide === 0}
-          className="flex items-center gap-2 px-6 py-3 rounded-xl font-medium transition-all disabled:opacity-30"
+      {/* Нижняя панель навигации */}
+      <div className="flex items-center justify-between px-6 py-4 shrink-0" style={{ borderTop: `1px solid ${darkTheme ? "rgba(255,255,255,0.08)" : "rgba(27,42,74,0.08)"}` }}>
+        <button onClick={goPrev} disabled={isFirst}
+          className="flex items-center gap-2 px-5 py-2.5 rounded-xl font-medium text-sm transition-all disabled:opacity-30"
           style={{ background: arrowBg, color: textColor }}>
-          <Icon name="ChevronLeft" size={18} />Назад
+          <Icon name="ChevronLeft" size={16} />Назад
         </button>
-        <div className="flex gap-2">
-          {SLIDE_DATA.map((_, i) => (
-            <button key={i} onClick={() => setSlide(i)} className="w-2.5 h-2.5 rounded-full transition-all"
-              style={{ background: i === slide ? "#F4720B" : dotInactive }} />
+
+        {/* Точки прогресса */}
+        <div className="flex gap-1.5 overflow-hidden max-w-[50%]">
+          {slides.map((_, i) => (
+            <button key={i} onClick={() => { setSlideIdx(i); setListStep(0); }}
+              className="rounded-full transition-all shrink-0"
+              style={{
+                width: i === slideIdx ? 20 : 8, height: 8,
+                background: i === slideIdx ? "#F4720B" : dotInactive,
+              }} />
           ))}
         </div>
-        <button onClick={() => setSlide(s => Math.min(SLIDE_DATA.length - 1, s + 1))} disabled={slide === SLIDE_DATA.length - 1}
-          className="flex items-center gap-2 px-6 py-3 rounded-xl font-medium text-white transition-all disabled:opacity-30"
+
+        <button onClick={goNext} disabled={isLast}
+          className="flex items-center gap-2 px-5 py-2.5 rounded-xl font-medium text-sm text-white transition-all disabled:opacity-30"
           style={{ background: "#F4720B" }}>
-          Далее<Icon name="ChevronRight" size={18} />
+          Далее<Icon name="ChevronRight" size={16} />
         </button>
       </div>
     </div>
