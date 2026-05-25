@@ -121,6 +121,28 @@ def handler(event: dict, context) -> dict:
         conn.close()
         return ok({'photo_url': data_url})
 
+    # ── PUBLIC USER PROFILE ────────────────────────────────────────────────────
+    if path.startswith('/user-profile/') and method == 'GET':
+        uid = path.split('/')[2]
+        conn = db()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("""
+            SELECT u.id, u.name, u.role, u.avatar, u.created_at,
+                   COALESCE(p.display_name, '') as display_name,
+                   COALESCE(p.about, '') as about,
+                   COALESCE(p.phone, '') as phone,
+                   COALESCE(p.vk_url, '') as vk_url,
+                   COALESCE(p.photo_url, '') as photo_url
+            FROM psa_users u
+            LEFT JOIN psa_trainer_profile p ON p.user_id=u.id
+            WHERE u.id=%s
+        """, (uid,))
+        row = cur.fetchone()
+        conn.close()
+        if not row:
+            return err('Пользователь не найден', 404)
+        return ok(dict(row))
+
     # ── USERS ─────────────────────────────────────────────────────────────────
     if path == '/users' and method == 'GET':
         conn = db()

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, createContext, useContext } from "react";
 import Icon from "@/components/ui/icon";
 import * as API from "@/lib/api";
 
@@ -22,6 +22,10 @@ function useLocalStorage<T>(key: string, initial: T): [T, (v: T | ((prev: T) => 
   return [value, set];
 }
 
+// ─── Profile context (для открытия профиля из любого компонента) ──────────────
+const ProfileCtx = createContext<((userId: number) => void) | null>(null);
+const useOpenProfile = () => useContext(ProfileCtx)!;
+
 // ─── UserAvatar ───────────────────────────────────────────────────────────────
 function UserAvatar({ photoUrl, initials, size = 36, radius = "rounded-full", bg = "#1B2A4A", textSize = "text-sm" }: {
   photoUrl?: string; initials: string; size?: number; radius?: string; bg?: string; textSize?: string;
@@ -33,6 +37,123 @@ function UserAvatar({ photoUrl, initials, size = 36, radius = "rounded-full", bg
     <div className={`${radius} flex items-center justify-center text-white font-bold shrink-0 ${textSize}`}
       style={{ width: size, height: size, background: bg, minWidth: size }}>
       {initials}
+    </div>
+  );
+}
+
+// ─── ClickableName ────────────────────────────────────────────────────────────
+function ClickableName({ userId, name, className = "", style }: { userId: number; name: string; className?: string; style?: React.CSSProperties }) {
+  const openProfile = useOpenProfile();
+  return (
+    <span onClick={e => { e.stopPropagation(); openProfile(userId); }}
+      className={`cursor-pointer hover:underline ${className}`}
+      style={style}>
+      {name}
+    </span>
+  );
+}
+
+// ─── UserProfileModal ─────────────────────────────────────────────────────────
+function UserProfileModal({ viewerId, viewerRole, targetUserId, onClose, onEdit }: {
+  viewerId: number; viewerRole: string; targetUserId: number; onClose: () => void; onEdit: () => void;
+}) {
+  const [profile, setProfile] = useState<API.UserProfile | null>(null);
+  const [loading, setLoading] = useState(true);
+  const isSelf = viewerId === targetUserId;
+
+  useEffect(() => {
+    setLoading(true);
+    API.apiGetUserProfile(targetUserId).then(p => { setProfile(p); setLoading(false); }).catch(() => setLoading(false));
+  }, [targetUserId]);
+
+  const displayName = profile?.display_name || profile?.name || "";
+  const roleLabel = profile?.role === "trainer" ? "Тренер" : "Ученик";
+  const joinDate = profile?.created_at ? new Date(profile.created_at).toLocaleDateString("ru", { year: "numeric", month: "long" }) : "";
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.45)", backdropFilter: "blur(4px)" }}
+      onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md animate-fade-in overflow-hidden">
+        {/* Шапка */}
+        <div className="relative p-6 pb-0" style={{ background: "linear-gradient(135deg, #1B2A4A 0%, #243558 100%)" }}>
+          <button onClick={onClose} className="absolute top-4 right-4 w-8 h-8 rounded-full flex items-center justify-center text-white/60 hover:text-white hover:bg-white/10 transition-all">
+            <Icon name="X" size={18} />
+          </button>
+          <div className="flex items-end gap-4 pb-6">
+            {loading ? (
+              <div className="w-20 h-20 rounded-2xl bg-white/10 animate-pulse" />
+            ) : profile?.photo_url ? (
+              <img src={profile.photo_url} alt={displayName} className="w-20 h-20 rounded-2xl object-cover border-2 border-white/20" />
+            ) : (
+              <div className="w-20 h-20 rounded-2xl flex items-center justify-center text-white text-2xl font-bold border-2 border-white/20" style={{ background: "#F4720B" }}>
+                {profile?.avatar || "?"}
+              </div>
+            )}
+            <div className="flex-1 min-w-0 pb-1">
+              {loading ? (
+                <div className="h-6 w-40 bg-white/10 rounded animate-pulse mb-2" />
+              ) : (
+                <h2 className="text-white text-xl font-bold leading-tight">{displayName}</h2>
+              )}
+              <div className="flex items-center gap-2 mt-1">
+                <span className="text-xs px-2 py-0.5 rounded-full font-medium" style={{ background: profile?.role === "trainer" ? "#F4720B" : "rgba(255,255,255,0.15)", color: "white" }}>
+                  {roleLabel}
+                </span>
+                <span className="text-white/50 text-xs">ProService Academy</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Контент */}
+        <div className="p-6 space-y-4">
+          {loading ? (
+            <div className="space-y-3">
+              {[1,2,3].map(i => <div key={i} className="h-4 bg-gray-100 rounded animate-pulse" />)}
+            </div>
+          ) : (
+            <>
+              {profile?.about && (
+                <div>
+                  <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">О себе</div>
+                  <p className="text-sm text-foreground leading-relaxed">{profile.about}</p>
+                </div>
+              )}
+              <div className="grid grid-cols-2 gap-3">
+                {profile?.phone && (
+                  <div className="flex items-center gap-2 text-sm text-foreground">
+                    <Icon name="Phone" size={14} style={{ color: "#F4720B" }} />
+                    <span>{profile.phone}</span>
+                  </div>
+                )}
+                {profile?.vk_url && (
+                  <a href={profile.vk_url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-sm hover:underline" style={{ color: "#1B2A4A" }}>
+                    <Icon name="Link" size={14} style={{ color: "#F4720B" }} />
+                    <span className="truncate">ВКонтакте</span>
+                  </a>
+                )}
+              </div>
+              {joinDate && (
+                <div className="flex items-center gap-2 text-sm text-muted-foreground pt-2 border-t border-border/50">
+                  <Icon name="Calendar" size={14} />
+                  <span>На платформе с {joinDate}</span>
+                </div>
+              )}
+              <div className="flex gap-3 pt-2">
+                {isSelf && (
+                  <button onClick={onEdit} className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium text-white transition-all hover:opacity-90" style={{ background: "#F4720B" }}>
+                    <Icon name="Pencil" size={14} />
+                    Редактировать профиль
+                  </button>
+                )}
+                <button onClick={onClose} className="flex-1 px-4 py-2.5 rounded-xl text-sm font-medium text-foreground transition-all hover:bg-gray-100" style={{ background: "#F8F9FB" }}>
+                  Закрыть
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
@@ -92,6 +213,7 @@ interface Course {
 
 interface Homework {
   id: number;
+  studentId?: number;
   studentName: string;
   studentAvatar?: string;
   studentPhotoUrl?: string;
@@ -104,6 +226,7 @@ interface Homework {
 
 interface ForumPost {
   id: number;
+  authorId?: number;
   author: string;
   avatar: string;
   photo_url?: string;
@@ -115,6 +238,7 @@ interface ForumPost {
 
 interface ForumTopic {
   id: number;
+  authorId?: number;
   title: string;
   author: string;
   avatar: string;
@@ -414,7 +538,7 @@ function Sidebar({ user, activeTab, setActiveTab, onLogout }: {
         <div className="flex items-center gap-3 mb-3">
           <UserAvatar photoUrl={user.photo_url} initials={user.avatar} size={36} bg="#F4720B" />
           <div className="flex-1 min-w-0">
-            <div className="text-white text-sm font-medium truncate">{user.name}</div>
+            <ClickableName userId={user.id} name={user.name} className="text-white text-sm font-medium truncate block" />
             <div className="text-white/40 text-xs">{user.role === "trainer" ? "Тренер" : "Ученик"}</div>
           </div>
         </div>
@@ -529,7 +653,7 @@ function TrainerDashboard() {
                 <div className="flex items-center justify-between mb-1.5">
                   <div className="flex items-center gap-2">
                     <UserAvatar photoUrl={student.photo_url} initials={student.avatar} size={28} textSize="text-xs" />
-                    <span className="text-sm font-medium text-foreground">{student.name}</span>
+                    <ClickableName userId={student.id} name={student.name} className="text-sm font-medium text-foreground" />
                   </div>
                   <span className="text-sm font-bold" style={{ color: "#F4720B" }}>{student.progress}%</span>
                 </div>
@@ -553,7 +677,9 @@ function TrainerDashboard() {
                   {hw.studentName.split(" ").map((n: string) => n[0]).join("")}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="text-sm font-medium text-foreground truncate">{hw.studentName}</div>
+                  <div className="text-sm font-medium text-foreground truncate">
+                    {hw.studentId ? <ClickableName userId={hw.studentId} name={hw.studentName} /> : hw.studentName}
+                  </div>
                   <div className="text-xs text-muted-foreground truncate">{hw.lessonTitle}</div>
                 </div>
                 <span className={`text-xs px-2 py-1 rounded-full font-medium shrink-0 ${
@@ -1539,6 +1665,7 @@ function HomeworksView({ user, onNotify }: { user: User; onNotify?: (n: Omit<Not
       API.apiGetHomeworks(params).then(raw => {
         setHomeworks((raw as Record<string, unknown>[]).map(r => ({
           id: r.id as number,
+          studentId: r.student_id as number,
           studentName: (r.student_name as string) || '',
           studentAvatar: (r.avatar as string) || '',
           studentPhotoUrl: (r.student_photo_url as string) || '',
@@ -1625,7 +1752,9 @@ function HomeworksView({ user, onNotify }: { user: User; onNotify?: (n: Omit<Not
           <div className="flex items-center gap-3 mb-4">
             <UserAvatar photoUrl={selected.studentPhotoUrl} initials={selected.studentAvatar || selected.studentName.split(" ").map((n: string) => n[0]).join("")} size={40} />
             <div>
-              <div className="font-bold text-foreground">{selected.studentName}</div>
+              <div className="font-bold text-foreground">
+                {selected.studentId ? <ClickableName userId={selected.studentId} name={selected.studentName} /> : selected.studentName}
+              </div>
               <div className="text-sm text-muted-foreground">{selected.lessonTitle} · {selected.submittedAt}</div>
             </div>
           </div>
@@ -1768,7 +1897,9 @@ function HomeworksView({ user, onNotify }: { user: User; onNotify?: (n: Omit<Not
             <div className="flex items-center gap-3 mb-2">
               <UserAvatar photoUrl={hw.studentPhotoUrl} initials={hw.studentAvatar || hw.studentName.split(" ").map((n: string) => n[0]).join("")} size={36} textSize="text-xs" />
               <div className="flex-1">
-                <div className="font-semibold text-foreground">{hw.studentName}</div>
+                <div className="font-semibold text-foreground">
+                  {hw.studentId ? <ClickableName userId={hw.studentId} name={hw.studentName} /> : hw.studentName}
+                </div>
                 <div className="text-xs text-muted-foreground">{hw.lessonTitle}</div>
               </div>
               <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${
@@ -2066,7 +2197,7 @@ function StudentsView() {
                   <UserAvatar photoUrl={student.photo_url} initials={student.avatar} size={48} radius="rounded-2xl" />
                   <div className="flex-1 min-w-0">
                     <div className="font-bold text-foreground flex items-center gap-2">
-                      {student.name}
+                      <ClickableName userId={student.id} name={student.name} />
                       {meta.candidateStatus && (
                         <span className="text-xs px-2 py-0.5 rounded-full font-medium"
                           style={{ background: candidateLabels[meta.candidateStatus].bg, color: candidateLabels[meta.candidateStatus].color }}>
@@ -2256,6 +2387,7 @@ function ForumView({ user }: { user: User }) {
         const fp = t.first_post as Record<string, unknown> | null;
         return {
           id: t.id as number,
+          authorId: t.author_id as number,
           title: t.title as string,
           author: (t.author_name as string) || '',
           avatar: (t.author_avatar as string) || '?',
@@ -2265,7 +2397,7 @@ function ForumView({ user }: { user: User }) {
           pinned: t.pinned as boolean,
           closed: t.closed as boolean,
           posts: fp ? [{
-            id: fp.id as number, author: fp.author_name as string,
+            id: fp.id as number, authorId: fp.author_id as number, author: fp.author_name as string,
             avatar: (fp.author_avatar as string) || '?',
             photo_url: (fp.author_photo_url as string) || '',
             role: (fp.author_role as string) === 'trainer' ? 'Тренер' : 'Ученик',
@@ -2285,6 +2417,7 @@ function ForumView({ user }: { user: User }) {
     API.apiGetTopicPosts(t.id).then(raw => {
       setTopicPosts((raw as Record<string, unknown>[]).map(p => ({
         id: p.id as number,
+        authorId: p.author_id as number,
         author: (p.author_name as string) || '',
         avatar: (p.author_avatar as string) || '?',
         photo_url: (p.author_photo_url as string) || '',
@@ -2301,10 +2434,10 @@ function ForumView({ user }: { user: User }) {
     API.apiCreateTopic({ title: newTopicTitle, author_id: user.id, text: newTopicText }).then(raw => {
       const r = raw as Record<string, unknown>;
       const topic: ForumTopic = {
-        id: r.id as number, title: newTopicTitle,
+        id: r.id as number, authorId: user.id, title: newTopicTitle,
         author: user.name, avatar: user.avatar, photo_url: user.photo_url || '', role: authorRole,
         createdAt: "только что", pinned: false, closed: false,
-        posts: [{ id: Date.now(), author: user.name, avatar: user.avatar, photo_url: user.photo_url || '', role: authorRole, text: newTopicText, time: "только что", likes: 0 }],
+        posts: [{ id: Date.now(), authorId: user.id, author: user.name, avatar: user.avatar, photo_url: user.photo_url || '', role: authorRole, text: newTopicText, time: "только что", likes: 0 }],
       };
       setTopics(prev => [topic, ...prev]);
       setTopicPosts(topic.posts);
@@ -2319,12 +2452,12 @@ function ForumView({ user }: { user: User }) {
     API.apiPostMessage(selectedTopic.id, { author_id: user.id, text: newMsg }).then(raw => {
       const r = raw as Record<string, unknown>;
       const post: ForumPost = {
-        id: r.id as number, author: user.name, avatar: user.avatar, photo_url: user.photo_url || '',
+        id: r.id as number, authorId: user.id, author: user.name, avatar: user.avatar, photo_url: user.photo_url || '',
         role: authorRole, text: newMsg, time: "только что", likes: 0,
       };
       setTopicPosts(prev => [...prev, post]);
     }).catch(() => {
-      const post: ForumPost = { id: Date.now(), author: user.name, avatar: user.avatar, photo_url: user.photo_url || '', role: authorRole, text: newMsg, time: "только что", likes: 0 };
+      const post: ForumPost = { id: Date.now(), authorId: user.id, author: user.name, avatar: user.avatar, photo_url: user.photo_url || '', role: authorRole, text: newMsg, time: "только что", likes: 0 };
       setTopicPosts(prev => [...prev, post]);
     });
     setNewMsg("");
@@ -2391,7 +2524,7 @@ function ForumView({ user }: { user: User }) {
             <div className="flex-1">
               <h1 className="text-lg font-bold text-foreground">{selectedTopic.title}</h1>
               <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground">
-                <span>{selectedTopic.author}</span>
+                {selectedTopic.authorId ? <ClickableName userId={selectedTopic.authorId} name={selectedTopic.author} /> : <span>{selectedTopic.author}</span>}
                 <span>·</span>
                 <span>{selectedTopic.createdAt}</span>
                 <span>·</span>
@@ -2425,7 +2558,7 @@ function ForumView({ user }: { user: User }) {
                 <UserAvatar photoUrl={post.photo_url} initials={post.avatar} size={40} />
                 <div className="flex-1">
                   <div className="flex items-center gap-2 flex-wrap mb-2">
-                    <span className="font-semibold text-foreground">{post.author}</span>
+                    {post.authorId ? <ClickableName userId={post.authorId} name={post.author} className="font-semibold text-foreground" /> : <span className="font-semibold text-foreground">{post.author}</span>}
                     <span className="text-xs px-2 py-0.5 rounded-full font-medium"
                       style={{ background: post.role === "Тренер" ? "#FFF3E8" : "#EEF1F7", color: post.role === "Тренер" ? "#F4720B" : "#1B2A4A" }}>
                       {post.role}
@@ -2557,7 +2690,7 @@ function ForumView({ user }: { user: User }) {
                   <h3 className="font-semibold text-foreground leading-snug">{topic.title}</h3>
                 </div>
                 <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <span className="font-medium" style={{ color: topic.role === "Тренер" ? "#F4720B" : "#1B2A4A" }}>{topic.author}</span>
+                  {topic.authorId ? <ClickableName userId={topic.authorId} name={topic.author} className="font-medium" style={{ color: topic.role === "Тренер" ? "#F4720B" : "#1B2A4A" }} /> : <span className="font-medium" style={{ color: topic.role === "Тренер" ? "#F4720B" : "#1B2A4A" }}>{topic.author}</span>}
                   <span>·</span>
                   <span>{topic.createdAt}</span>
                 </div>
@@ -2931,6 +3064,7 @@ export default function Index() {
   const [activeTab, setActiveTab] = useLocalStorage<string>("psa_tab", "dashboard");
   const [presentMode, setPresentMode] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [viewingUserId, setViewingUserId] = useState<number | null>(null);
 
   // Восстанавливаем presentMode если пользователь — презентация
   useEffect(() => {
@@ -3016,8 +3150,18 @@ export default function Index() {
   const showWatermark = contentPages.includes(activeTab);
 
   return (
+    <ProfileCtx.Provider value={setViewingUserId}>
     <div className="flex min-h-screen" style={{ background: "#F0F3F8" }}>
       {showWatermark && <Watermark name={user.name} />}
+      {viewingUserId !== null && (
+        <UserProfileModal
+          viewerId={user.id}
+          viewerRole={user.role}
+          targetUserId={viewingUserId}
+          onClose={() => setViewingUserId(null)}
+          onEdit={() => { setViewingUserId(null); setActiveTab("profile"); }}
+        />
+      )}
       <Sidebar user={user} activeTab={activeTab} setActiveTab={setActiveTab} onLogout={handleLogout} />
 
       <main className="flex-1 min-w-0">
@@ -3040,7 +3184,7 @@ export default function Index() {
               </button>
             )}
             <UserAvatar photoUrl={user.photo_url} initials={user.avatar} size={36} bg="#1B2A4A" />
-            <span className="hidden md:block text-sm font-medium text-foreground">{user.name}</span>
+            <ClickableName userId={user.id} name={user.name} className="hidden md:block text-sm font-medium text-foreground" />
           </div>
         </header>
 
@@ -3052,5 +3196,6 @@ export default function Index() {
 
       <MobileNav user={user} activeTab={activeTab} setActiveTab={setActiveTab} />
     </div>
+    </ProfileCtx.Provider>
   );
 }

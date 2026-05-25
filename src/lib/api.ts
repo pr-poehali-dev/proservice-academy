@@ -103,6 +103,22 @@ export const apiPostMessage = (topicId: number, data: { author_id: number; text:
 export const apiLikePost = (postId: number, userId: number) =>
   post<Record<string, unknown>>(`/forum/posts/${postId}/like`, { user_id: userId });
 
+// Public User Profile
+export interface UserProfile {
+  id: number;
+  name: string;
+  role: string;
+  avatar: string;
+  created_at: string;
+  display_name: string;
+  about: string;
+  phone: string;
+  vk_url: string;
+  photo_url: string;
+}
+export const apiGetUserProfile = (userId: number) =>
+  get<UserProfile>(`/user-profile/${userId}`);
+
 // Student Stats
 export interface StudentStats {
   lessons_done: number;

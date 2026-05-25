@@ -18,6 +18,15 @@
       "bodyMatcher": "partial"
     },
     {
+      "name": "Get user profile",
+      "method": "POST",
+      "path": "/",
+      "body": {"_method": "GET", "_path": "/user-profile/1"},
+      "expectedStatus": 200,
+      "expectedBody": {"id": 1, "role": "trainer"},
+      "bodyMatcher": "partial"
+    },
+    {
       "name": "Get student stats",
       "method": "POST",
       "path": "/",
