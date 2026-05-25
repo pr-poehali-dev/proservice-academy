@@ -30,7 +30,7 @@ export function saveAiSettingsToStorage(settings: AiSettings): void {
   localStorage.setItem(AI_SETTINGS_KEY, JSON.stringify(settings));
 }
 
-export async function callAi(prompt: string, system = ""): Promise<string> {
+export async function callAi(prompt: string, system = "", temperature = 0.7): Promise<string> {
   const s = getAiSettings();
   if (s.provider === "ollama") {
     const res = await fetch(`${s.ollamaUrl}/api/chat`, {
@@ -39,6 +39,7 @@ export async function callAi(prompt: string, system = ""): Promise<string> {
       body: JSON.stringify({
         model: s.ollamaModel,
         stream: false,
+        options: { temperature },
         messages: [
           ...(system ? [{ role: "system", content: system }] : []),
           { role: "user", content: prompt },
@@ -55,6 +56,7 @@ export async function callAi(prompt: string, system = ""): Promise<string> {
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${s.openaiKey}` },
       body: JSON.stringify({
         model: s.openaiModel,
+        temperature,
         messages: [
           ...(system ? [{ role: "system", content: system }] : []),
           { role: "user", content: prompt },

@@ -1574,31 +1574,32 @@ function CoursesView({ user }: { user: User }) {
     setAiRawResponse("");
     try {
       const { callAi: ai } = await import("@/lib/ai");
-      const prompt = `Ты генератор презентаций. Твоя задача — преобразовать текст в слайды.
+      const prompt = `You are a JSON generator. Your ONLY task is to output valid JSON. No explanations, no markdown, no extra text.
 
-ВАЖНО: отвечай ТОЛЬКО валидным JSON массивом. Никаких пояснений, никакого текста до или после.
-
-Формат ответа строго такой:
+Input: Russian text about automotive service
+Output format (STRICT):
 [
-  {"title": "Заголовок слайда 1", "content": ["Тезис 1", "Тезис 2", "Тезис 3"]},
-  {"title": "Заголовок слайда 2", "content": ["Тезис 1", "Тезис 2"]}
+  {"title": "Заголовок на русском", "content": ["Тезис 1 на русском", "Тезис 2 на русском"]},
+  {"title": "Второй заголовок", "content": ["Тезис 1", "Тезис 2"]}
 ]
 
-Правила:
-- Максимум 10 слайдов
-- Заголовок слайда — до 7 слов
-- В каждом слайде 3-5 коротких тезисов
-- Тезисы на русском языке
-- Только JSON, ничего больше
+Rules:
+- Maximum 10 slides
+- Title: max 7 words in Russian
+- Content: 3-5 short points in Russian
+- Keep original Russian language from input text
+- Output ONLY the JSON array, nothing else
+- No markdown code blocks
+- No explanations before or after
 
-Текст для преобразования:
+Text to convert:
 ${text}`;
-      const reply = await ai(prompt);
+      const reply = await ai(prompt, "", 0.3);
       // Очищаем ответ перед парсингом
       let cleaned = reply.trim();
       cleaned = cleaned.replace(/```json|```/g, "");
-      cleaned = cleaned.replace(/^[^[]*/, "");
-      cleaned = cleaned.replace(/[^\]]*$/, "");
+      cleaned = cleaned.replace(/^[\s\S]*?(\[)/, "$1");
+      cleaned = cleaned.replace(/(\])[\s\S]*$/, "$1");
       cleaned = cleaned.trim();
       if (!cleaned) {
         setAiRawResponse(reply);
