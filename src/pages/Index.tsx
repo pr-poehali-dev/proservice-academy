@@ -22,6 +22,21 @@ function useLocalStorage<T>(key: string, initial: T): [T, (v: T | ((prev: T) => 
   return [value, set];
 }
 
+// ─── UserAvatar ───────────────────────────────────────────────────────────────
+function UserAvatar({ photoUrl, initials, size = 36, radius = "rounded-full", bg = "#1B2A4A", textSize = "text-sm" }: {
+  photoUrl?: string; initials: string; size?: number; radius?: string; bg?: string; textSize?: string;
+}) {
+  if (photoUrl) {
+    return <img src={photoUrl} alt={initials} className={`${radius} object-cover shrink-0`} style={{ width: size, height: size }} />;
+  }
+  return (
+    <div className={`${radius} flex items-center justify-center text-white font-bold shrink-0 ${textSize}`}
+      style={{ width: size, height: size, background: bg, minWidth: size }}>
+      {initials}
+    </div>
+  );
+}
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 type Role = "trainer" | "student" | "presentation";
 
@@ -31,6 +46,7 @@ interface User {
   email: string;
   role: Role;
   avatar: string;
+  photo_url?: string;
   progress?: number;
   coursesCompleted?: number;
 }
@@ -77,6 +93,8 @@ interface Course {
 interface Homework {
   id: number;
   studentName: string;
+  studentAvatar?: string;
+  studentPhotoUrl?: string;
   lessonTitle: string;
   submittedAt: string;
   status: "pending" | "checked" | "revision";
@@ -88,6 +106,7 @@ interface ForumPost {
   id: number;
   author: string;
   avatar: string;
+  photo_url?: string;
   text: string;
   time: string;
   likes: number;
@@ -99,6 +118,7 @@ interface ForumTopic {
   title: string;
   author: string;
   avatar: string;
+  photo_url?: string;
   role: string;
   createdAt: string;
   posts: ForumPost[];
@@ -391,9 +411,7 @@ function Sidebar({ user, activeTab, setActiveTab, onLogout }: {
 
       <div className="p-4 border-t" style={{ borderColor: "rgba(255,255,255,0.1)" }}>
         <div className="flex items-center gap-3 mb-3">
-          <div className="w-9 h-9 rounded-full flex items-center justify-center text-white font-bold text-sm shrink-0" style={{ background: "#F4720B" }}>
-            {user.avatar}
-          </div>
+          <UserAvatar photoUrl={user.photo_url} initials={user.avatar} size={36} bg="#F4720B" />
           <div className="flex-1 min-w-0">
             <div className="text-white text-sm font-medium truncate">{user.name}</div>
             <div className="text-white/40 text-xs">{user.role === "trainer" ? "Тренер" : "Ученик"}</div>
@@ -508,9 +526,7 @@ function TrainerDashboard() {
               <div key={student.id}>
                 <div className="flex items-center justify-between mb-1.5">
                   <div className="flex items-center gap-2">
-                    <div className="w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-bold" style={{ background: "#1B2A4A" }}>
-                      {student.avatar}
-                    </div>
+                    <UserAvatar photoUrl={student.photo_url} initials={student.avatar} size={28} textSize="text-xs" />
                     <span className="text-sm font-medium text-foreground">{student.name}</span>
                   </div>
                   <span className="text-sm font-bold" style={{ color: "#F4720B" }}>{student.progress}%</span>
@@ -571,9 +587,7 @@ function StudentDashboard({ user, notifications, onMarkRead }: { user: User; not
     <div className="animate-fade-in space-y-6">
       <div className="rounded-2xl p-6" style={{ background: "linear-gradient(135deg, #1B2A4A 0%, #243558 100%)" }}>
         <div className="flex items-center gap-4 mb-4">
-          <div className="w-14 h-14 rounded-2xl flex items-center justify-center text-white font-bold text-xl" style={{ background: "#F4720B" }}>
-            {user.avatar}
-          </div>
+          <UserAvatar photoUrl={user.photo_url} initials={user.avatar} size={56} radius="rounded-2xl" bg="#F4720B" textSize="text-xl" />
           <div>
             <h1 className="text-white text-xl font-bold">{user.name}</h1>
             <p className="text-white/60 text-sm">Ученик</p>
@@ -1524,6 +1538,8 @@ function HomeworksView({ user, onNotify }: { user: User; onNotify?: (n: Omit<Not
         setHomeworks((raw as Record<string, unknown>[]).map(r => ({
           id: r.id as number,
           studentName: (r.student_name as string) || '',
+          studentAvatar: (r.avatar as string) || '',
+          studentPhotoUrl: (r.student_photo_url as string) || '',
           lessonTitle: r.lesson_title as string,
           submittedAt: new Date(r.submitted_at as string).toLocaleDateString('ru', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }),
           status: r.status as "pending" | "checked" | "revision",
@@ -1605,9 +1621,7 @@ function HomeworksView({ user, onNotify }: { user: User; onNotify?: (n: Omit<Not
         </div>
         <div className="bg-white rounded-2xl p-6 border border-border/50">
           <div className="flex items-center gap-3 mb-4">
-            <div className="w-10 h-10 rounded-full flex items-center justify-center text-white text-sm font-bold" style={{ background: "#1B2A4A" }}>
-              {selected.studentName.split(" ").map((n: string) => n[0]).join("")}
-            </div>
+            <UserAvatar photoUrl={selected.studentPhotoUrl} initials={selected.studentAvatar || selected.studentName.split(" ").map((n: string) => n[0]).join("")} size={40} />
             <div>
               <div className="font-bold text-foreground">{selected.studentName}</div>
               <div className="text-sm text-muted-foreground">{selected.lessonTitle} · {selected.submittedAt}</div>
@@ -1750,9 +1764,7 @@ function HomeworksView({ user, onNotify }: { user: User; onNotify?: (n: Omit<Not
         {homeworks.map(hw => (
           <div key={hw.id} className="bg-white rounded-2xl p-5 border border-border/50 hover-lift cursor-pointer" onClick={() => { setSelected(hw); setGradeInput(hw.grade ? String(hw.grade) : ""); }}>
             <div className="flex items-center gap-3 mb-2">
-              <div className="w-9 h-9 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0" style={{ background: "#1B2A4A" }}>
-                {hw.studentName.split(" ").map((n: string) => n[0]).join("")}
-              </div>
+              <UserAvatar photoUrl={hw.studentPhotoUrl} initials={hw.studentAvatar || hw.studentName.split(" ").map((n: string) => n[0]).join("")} size={36} textSize="text-xs" />
               <div className="flex-1">
                 <div className="font-semibold text-foreground">{hw.studentName}</div>
                 <div className="text-xs text-muted-foreground">{hw.lessonTitle}</div>
@@ -1803,6 +1815,7 @@ function StudentsView() {
         email: u.email as string,
         role: "student" as Role,
         avatar: u.avatar as string,
+        photo_url: (u.photo_url as string) || '',
         progress: (u.progress as number) || 0,
         coursesCompleted: (u.courses_completed as number) || 0,
       })));
@@ -2048,9 +2061,7 @@ function StudentsView() {
               {/* Шапка карточки */}
               <div className="p-5">
                 <div className="flex items-center gap-4 mb-3">
-                  <div className="w-12 h-12 rounded-2xl flex items-center justify-center text-white font-bold shrink-0" style={{ background: "#1B2A4A" }}>
-                    {student.avatar}
-                  </div>
+                  <UserAvatar photoUrl={student.photo_url} initials={student.avatar} size={48} radius="rounded-2xl" />
                   <div className="flex-1 min-w-0">
                     <div className="font-bold text-foreground flex items-center gap-2">
                       {student.name}
@@ -2246,6 +2257,7 @@ function ForumView({ user }: { user: User }) {
           title: t.title as string,
           author: (t.author_name as string) || '',
           avatar: (t.author_avatar as string) || '?',
+          photo_url: (t.author_photo_url as string) || '',
           role: (t.author_role as string) === 'trainer' ? 'Тренер' : 'Ученик',
           createdAt: new Date(t.created_at as string).toLocaleDateString('ru', { day: 'numeric', month: 'short' }),
           pinned: t.pinned as boolean,
@@ -2253,6 +2265,7 @@ function ForumView({ user }: { user: User }) {
           posts: fp ? [{
             id: fp.id as number, author: fp.author_name as string,
             avatar: (fp.author_avatar as string) || '?',
+            photo_url: (fp.author_photo_url as string) || '',
             role: (fp.author_role as string) === 'trainer' ? 'Тренер' : 'Ученик',
             text: fp.text as string, time: '', likes: fp.likes as number,
           }] : [],
@@ -2272,6 +2285,7 @@ function ForumView({ user }: { user: User }) {
         id: p.id as number,
         author: (p.author_name as string) || '',
         avatar: (p.author_avatar as string) || '?',
+        photo_url: (p.author_photo_url as string) || '',
         role: (p.author_role as string) === 'trainer' ? 'Тренер' : 'Ученик',
         text: p.text as string,
         time: new Date(p.created_at as string).toLocaleTimeString('ru', { hour: '2-digit', minute: '2-digit' }),
@@ -2286,9 +2300,9 @@ function ForumView({ user }: { user: User }) {
       const r = raw as Record<string, unknown>;
       const topic: ForumTopic = {
         id: r.id as number, title: newTopicTitle,
-        author: user.name, avatar: user.avatar, role: authorRole,
+        author: user.name, avatar: user.avatar, photo_url: user.photo_url || '', role: authorRole,
         createdAt: "только что", pinned: false, closed: false,
-        posts: [{ id: Date.now(), author: user.name, avatar: user.avatar, role: authorRole, text: newTopicText, time: "только что", likes: 0 }],
+        posts: [{ id: Date.now(), author: user.name, avatar: user.avatar, photo_url: user.photo_url || '', role: authorRole, text: newTopicText, time: "только что", likes: 0 }],
       };
       setTopics(prev => [topic, ...prev]);
       setTopicPosts(topic.posts);
@@ -2303,12 +2317,12 @@ function ForumView({ user }: { user: User }) {
     API.apiPostMessage(selectedTopic.id, { author_id: user.id, text: newMsg }).then(raw => {
       const r = raw as Record<string, unknown>;
       const post: ForumPost = {
-        id: r.id as number, author: user.name, avatar: user.avatar,
+        id: r.id as number, author: user.name, avatar: user.avatar, photo_url: user.photo_url || '',
         role: authorRole, text: newMsg, time: "только что", likes: 0,
       };
       setTopicPosts(prev => [...prev, post]);
     }).catch(() => {
-      const post: ForumPost = { id: Date.now(), author: user.name, avatar: user.avatar, role: authorRole, text: newMsg, time: "только что", likes: 0 };
+      const post: ForumPost = { id: Date.now(), author: user.name, avatar: user.avatar, photo_url: user.photo_url || '', role: authorRole, text: newMsg, time: "только что", likes: 0 };
       setTopicPosts(prev => [...prev, post]);
     });
     setNewMsg("");
@@ -2406,9 +2420,7 @@ function ForumView({ user }: { user: User }) {
             <div key={post.id} className="bg-white rounded-2xl p-5 border border-border/50"
               style={idx === 0 ? { borderLeft: "3px solid #F4720B" } : {}}>
               <div className="flex items-start gap-3">
-                <div className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-sm shrink-0" style={{ background: "#1B2A4A" }}>
-                  {post.avatar}
-                </div>
+                <UserAvatar photoUrl={post.photo_url} initials={post.avatar} size={40} />
                 <div className="flex-1">
                   <div className="flex items-center gap-2 flex-wrap mb-2">
                     <span className="font-semibold text-foreground">{post.author}</span>
@@ -2530,9 +2542,7 @@ function ForumView({ user }: { user: User }) {
             style={topic.pinned ? { borderColor: "#F4720B", borderWidth: "1.5px" } : {}}
             onClick={() => openTopic(topic)}>
             <div className="flex items-start gap-3">
-              <div className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-sm shrink-0" style={{ background: "#1B2A4A" }}>
-                {topic.avatar}
-              </div>
+              <UserAvatar photoUrl={topic.photo_url} initials={topic.avatar} size={40} />
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 mb-1 flex-wrap">
                   {topic.pinned && (
@@ -2726,7 +2736,9 @@ function ProfileView({ user, onUserUpdate }: { user: User; onUserUpdate: (u: Use
     reader.onload = () => {
       const dataUrl = reader.result as string;
       setPhotoUrl(dataUrl);
-      API.apiUploadProfilePhoto(user.id, dataUrl).catch(() => {});
+      API.apiUploadProfilePhoto(user.id, dataUrl).then(() => {
+        onUserUpdate({ ...user, photo_url: dataUrl });
+      }).catch(() => {});
     };
     reader.readAsDataURL(file);
     e.target.value = "";
@@ -2736,6 +2748,7 @@ function ProfileView({ user, onUserUpdate }: { user: User; onUserUpdate: (u: Use
     setSaving(true);
     try {
       await API.apiSaveProfile(user.id, { display_name: displayName, about, phone, vk_url: vkUrl });
+      onUserUpdate({ ...user, name: displayName, photo_url: photoUrl });
       setSaved(true);
       setTimeout(() => setSaved(false), 2500);
     } catch (e) { console.error(e); }
@@ -2922,6 +2935,19 @@ export default function Index() {
     if (user?.role === "presentation") setPresentMode(true);
   }, []);
 
+  // Загружаем актуальный профиль при старте — имя и фото
+  useEffect(() => {
+    if (user?.id && user.role !== "presentation") {
+      API.apiGetProfile(user.id).then(raw => {
+        const name = (raw.display_name as string) || (raw.name as string) || user.name;
+        const photo_url = (raw.photo_url as string) || "";
+        if (name !== user.name || photo_url !== (user.photo_url || "")) {
+          setUser(prev => prev ? { ...prev, name, photo_url } : prev);
+        }
+      }).catch(() => {});
+    }
+  }, [user?.id]);
+
   // Загрузка уведомлений с сервера для ученика
   useEffect(() => {
     if (user?.role === 'student') {
@@ -3011,9 +3037,7 @@ export default function Index() {
                 {unreadCount} новых
               </button>
             )}
-            <div className="w-9 h-9 rounded-full flex items-center justify-center text-white text-sm font-bold" style={{ background: "#1B2A4A" }}>
-              {user.avatar}
-            </div>
+            <UserAvatar photoUrl={user.photo_url} initials={user.avatar} size={36} bg="#1B2A4A" />
             <span className="hidden md:block text-sm font-medium text-foreground">{user.name}</span>
           </div>
         </header>

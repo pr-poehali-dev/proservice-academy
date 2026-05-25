@@ -125,7 +125,12 @@ def handler(event: dict, context) -> dict:
     if path == '/users' and method == 'GET':
         conn = db()
         cur = conn.cursor(cursor_factory=RealDictCursor)
-        cur.execute("SELECT * FROM psa_users WHERE role='student' ORDER BY id")
+        cur.execute("""
+            SELECT u.*, COALESCE(tp.photo_url, '') as photo_url
+            FROM psa_users u
+            LEFT JOIN psa_trainer_profile tp ON tp.user_id=u.id
+            WHERE u.role='student' ORDER BY u.id
+        """)
         users = cur.fetchall()
         conn.close()
         return ok([dict(u) for u in users])
@@ -380,9 +385,25 @@ def handler(event: dict, context) -> dict:
         conn = db()
         cur = conn.cursor(cursor_factory=RealDictCursor)
         if 'student_id' in qs:
-            cur.execute("SELECT h.*, u.name as student_name, u.avatar FROM psa_homeworks h JOIN psa_users u ON u.id=h.student_id WHERE h.student_id=%s AND h.status != 'deleted' ORDER BY h.submitted_at DESC", (qs['student_id'],))
+            cur.execute("""
+                SELECT h.*, u.name as student_name, u.avatar,
+                       COALESCE(tp.photo_url, '') as student_photo_url
+                FROM psa_homeworks h
+                JOIN psa_users u ON u.id=h.student_id
+                LEFT JOIN psa_trainer_profile tp ON tp.user_id=h.student_id
+                WHERE h.student_id=%s AND h.status != 'deleted'
+                ORDER BY h.submitted_at DESC
+            """, (qs['student_id'],))
         else:
-            cur.execute("SELECT h.*, u.name as student_name, u.avatar FROM psa_homeworks h JOIN psa_users u ON u.id=h.student_id WHERE h.status != 'deleted' ORDER BY h.submitted_at DESC")
+            cur.execute("""
+                SELECT h.*, u.name as student_name, u.avatar,
+                       COALESCE(tp.photo_url, '') as student_photo_url
+                FROM psa_homeworks h
+                JOIN psa_users u ON u.id=h.student_id
+                LEFT JOIN psa_trainer_profile tp ON tp.user_id=h.student_id
+                WHERE h.status != 'deleted'
+                ORDER BY h.submitted_at DESC
+            """)
         rows = cur.fetchall()
         conn.close()
         return ok([dict(r) for r in rows])
@@ -474,17 +495,22 @@ def handler(event: dict, context) -> dict:
         cur = conn.cursor(cursor_factory=RealDictCursor)
         cur.execute("""
             SELECT t.*, u.name as author_name, u.avatar as author_avatar, u.role as author_role,
+                   COALESCE(tp.photo_url, '') as author_photo_url,
                    (SELECT COUNT(*) FROM psa_forum_posts p WHERE p.topic_id=t.id) as posts_count
             FROM psa_forum_topics t
             LEFT JOIN psa_users u ON u.id=t.author_id
+            LEFT JOIN psa_trainer_profile tp ON tp.user_id=t.author_id
             ORDER BY t.pinned DESC, t.created_at DESC
         """)
         topics = [dict(r) for r in cur.fetchall()]
         # Первый пост для превью
         for topic in topics:
             cur.execute("""
-                SELECT p.*, u.name as author_name, u.avatar as author_avatar, u.role as author_role
-                FROM psa_forum_posts p LEFT JOIN psa_users u ON u.id=p.author_id
+                SELECT p.*, u.name as author_name, u.avatar as author_avatar, u.role as author_role,
+                       COALESCE(tp.photo_url, '') as author_photo_url
+                FROM psa_forum_posts p
+                LEFT JOIN psa_users u ON u.id=p.author_id
+                LEFT JOIN psa_trainer_profile tp ON tp.user_id=p.author_id
                 WHERE p.topic_id=%s ORDER BY p.created_at LIMIT 1
             """, (topic['id'],))
             first = cur.fetchone()
@@ -497,8 +523,11 @@ def handler(event: dict, context) -> dict:
         conn = db()
         cur = conn.cursor(cursor_factory=RealDictCursor)
         cur.execute("""
-            SELECT p.*, u.name as author_name, u.avatar as author_avatar, u.role as author_role
-            FROM psa_forum_posts p LEFT JOIN psa_users u ON u.id=p.author_id
+            SELECT p.*, u.name as author_name, u.avatar as author_avatar, u.role as author_role,
+                   COALESCE(tp.photo_url, '') as author_photo_url
+            FROM psa_forum_posts p
+            LEFT JOIN psa_users u ON u.id=p.author_id
+            LEFT JOIN psa_trainer_profile tp ON tp.user_id=p.author_id
             WHERE p.topic_id=%s ORDER BY p.created_at
         """, (tid,))
         posts = [dict(r) for r in cur.fetchall()]
