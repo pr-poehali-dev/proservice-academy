@@ -103,6 +103,19 @@ export const apiPostMessage = (topicId: number, data: { author_id: number; text:
 export const apiLikePost = (postId: number, userId: number) =>
   post<Record<string, unknown>>(`/forum/posts/${postId}/like`, { user_id: userId });
 
+// Slides
+export interface SlideData {
+  id?: number;
+  lesson_id?: number;
+  title: string;
+  content: string[];
+  sort_order?: number;
+}
+export const apiGetSlides = (lessonId: number) =>
+  get<SlideData[]>('/slides', { lesson_id: String(lessonId) });
+export const apiSaveSlidesBatch = (lessonId: number, slides: { title: string; content: string[] }[]) =>
+  post<SlideData[]>('/slides/batch', { lesson_id: lessonId, slides });
+
 // Direct Messages
 export interface DmDialog {
   partner_id: number;

@@ -1515,6 +1515,75 @@ function CoursesView({ user }: { user: User }) {
   const [draggingFromIdx, setDraggingFromIdx] = useState<number | null>(null);
   const [viewingLesson, setViewingLesson] = useState<Lesson | null>(null);
 
+  // Слайды презентации
+  const [lessonSlides, setLessonSlides] = useState<{ id?: number; title: string; content: string[] }[]>([]);
+  const [slidesLoading, setSlidesLoading] = useState(false);
+  const [aiGenerating, setAiGenerating] = useState(false);
+  const [aiError, setAiError] = useState("");
+  const [slidesDirty, setSlidesDirty] = useState(false);
+  const [slidesSaving, setSlidesSaving] = useState(false);
+
+  const addSlide = () => {
+    setLessonSlides(prev => [...prev, { title: "", content: [""] }]);
+    setSlidesDirty(true);
+  };
+
+  const removeSlide = (idx: number) => {
+    setLessonSlides(prev => prev.filter((_, i) => i !== idx));
+    setSlidesDirty(true);
+  };
+
+  const updateSlideTitle = (idx: number, title: string) => {
+    setLessonSlides(prev => prev.map((s, i) => i === idx ? { ...s, title } : s));
+    setSlidesDirty(true);
+  };
+
+  const updateSlideContent = (idx: number, content: string[]) => {
+    setLessonSlides(prev => prev.map((s, i) => i === idx ? { ...s, content } : s));
+    setSlidesDirty(true);
+  };
+
+  const moveSlide = (idx: number, dir: -1 | 1) => {
+    const next = idx + dir;
+    if (next < 0 || next >= lessonSlides.length) return;
+    setLessonSlides(prev => {
+      const arr = [...prev];
+      [arr[idx], arr[next]] = [arr[next], arr[idx]];
+      return arr;
+    });
+    setSlidesDirty(true);
+  };
+
+  const saveSlides = async (lessonId: number) => {
+    setSlidesSaving(true);
+    try {
+      await API.apiSaveSlidesBatch(lessonId, lessonSlides.filter(s => s.title.trim() || s.content.some(c => c.trim())));
+      setSlidesDirty(false);
+    } catch (_e) { /* ignore */ }
+    setSlidesSaving(false);
+  };
+
+  const generateSlidesFromAI = async () => {
+    if (!editingLesson) return;
+    const text = lessonContent.trim();
+    if (!text) { setAiError("Сначала заполните поле «Основной контент»"); return; }
+    setAiGenerating(true);
+    setAiError("");
+    try {
+      const { callAi: ai } = await import("@/lib/ai");
+      const prompt = `Ты помощник для создания презентаций на русском языке. Преобразуй следующий учебный текст в презентацию. Раздели на слайды — не более 10 слайдов. Для каждого слайда дай: 1) короткий заголовок до 7 слов 2) содержимое: 3-5 коротких тезисов. Верни результат строго в формате JSON: [{"title": "...", "content": ["...", "..."]}] Только JSON — без пояснений и комментариев.\n\nТекст урока:\n${text}`;
+      const reply = await ai(prompt);
+      const jsonStr = reply.match(/\[[\s\S]*\]/)?.[0];
+      if (!jsonStr) throw new Error("Не удалось распознать JSON в ответе модели");
+      const parsed: { title: string; content: string[] }[] = JSON.parse(jsonStr);
+      setLessonSlides(parsed.map(s => ({ title: s.title || "", content: Array.isArray(s.content) ? s.content : [] })));
+      setSlidesDirty(true);
+    } catch (e) {
+      setAiError(String(e));
+    }
+    setAiGenerating(false);
+  };
+
   const openEditLesson = (lesson: Lesson) => {
     setEditingLesson(lesson);
     setLessonTitle(lesson.title);
@@ -1525,6 +1594,15 @@ function CoursesView({ user }: { user: User }) {
     setLessonHomework(lesson.homework || "");
     setLessonCheatsheet(lesson.cheatsheet || "");
     setLessonStatus(lesson.status || "published");
+    // Загружаем слайды
+    setLessonSlides([]);
+    setSlidesLoading(true);
+    setSlidesDirty(false);
+    setAiError("");
+    API.apiGetSlides(lesson.id).then(raw => {
+      const active = (raw as API.SlideData[]).filter(s => s.title !== '__deleted__');
+      setLessonSlides(active.map(s => ({ id: s.id, title: s.title, content: Array.isArray(s.content) ? s.content : [] })));
+    }).catch(() => {}).finally(() => setSlidesLoading(false));
   };
 
   const handleEditLesson = () => {
@@ -2020,6 +2098,111 @@ function CoursesView({ user }: { user: User }) {
                     <span className="text-xs font-normal text-muted-foreground">(готовые формулы и фразы)</span>
                   </label>
                   <MarkdownEditor value={lessonCheatsheet} onChange={setLessonCheatsheet} rows={3} placeholder="Готовые фразы, таблицы, алгоритмы для практики..." />
+                </div>
+
+                {/* Блок Презентация */}
+                <div className="rounded-2xl overflow-hidden" style={{ border: "2px solid #EEF1F7" }}>
+                  <div className="px-4 py-3 flex items-center justify-between" style={{ background: "#F0F3F8" }}>
+                    <span className="font-semibold text-foreground text-sm flex items-center gap-2">
+                      <Icon name="Monitor" size={15} style={{ color: "#F4720B" }} />
+                      Слайды презентации
+                      {lessonSlides.length > 0 && <span className="text-xs text-muted-foreground">({lessonSlides.length} сл.)</span>}
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <button onClick={generateSlidesFromAI} disabled={aiGenerating}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all disabled:opacity-50"
+                        style={{ background: "#1B2A4A", color: "white" }}>
+                        {aiGenerating ? <><Icon name="Loader" size={12} className="animate-spin" />Генерация...</> : <><Icon name="Sparkles" size={12} />Создать через AI</>}
+                      </button>
+                      <button onClick={addSlide}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
+                        style={{ background: "#F4720B", color: "white" }}>
+                        <Icon name="Plus" size={12} />Добавить слайд
+                      </button>
+                    </div>
+                  </div>
+
+                  {aiError && (
+                    <div className="px-4 py-2 text-xs flex items-center gap-2" style={{ background: "#FEF2F2", color: "#DC2626" }}>
+                      <Icon name="AlertCircle" size={12} />
+                      {aiError}
+                    </div>
+                  )}
+
+                  {slidesLoading ? (
+                    <div className="p-4 text-center text-sm text-muted-foreground">
+                      <Icon name="Loader" size={16} className="animate-spin inline mr-1" />Загрузка слайдов...
+                    </div>
+                  ) : lessonSlides.length === 0 ? (
+                    <div className="p-6 text-center text-sm text-muted-foreground">
+                      Слайды не добавлены. Создайте вручную или через AI.
+                    </div>
+                  ) : (
+                    <div className="p-3 space-y-3 max-h-80 overflow-y-auto">
+                      {lessonSlides.map((slide, idx) => (
+                        <div key={idx} className="rounded-xl p-3 space-y-2" style={{ background: "white", border: "1.5px solid #E0E5EF" }}>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-bold text-muted-foreground w-5 text-center">{idx + 1}</span>
+                            <input value={slide.title} onChange={e => updateSlideTitle(idx, e.target.value)}
+                              placeholder="Заголовок слайда"
+                              className="flex-1 px-2 py-1.5 rounded-lg text-sm font-medium text-foreground outline-none"
+                              style={{ background: "#F8F9FB", border: "1px solid #E0E5EF" }} />
+                            <button onClick={() => moveSlide(idx, -1)} disabled={idx === 0}
+                              className="w-6 h-6 rounded flex items-center justify-center text-muted-foreground disabled:opacity-30 hover:text-foreground">
+                              <Icon name="ChevronUp" size={13} />
+                            </button>
+                            <button onClick={() => moveSlide(idx, 1)} disabled={idx === lessonSlides.length - 1}
+                              className="w-6 h-6 rounded flex items-center justify-center text-muted-foreground disabled:opacity-30 hover:text-foreground">
+                              <Icon name="ChevronDown" size={13} />
+                            </button>
+                            <button onClick={() => removeSlide(idx)}
+                              className="w-6 h-6 rounded flex items-center justify-center transition-all hover:bg-red-50"
+                              style={{ color: "#DC2626" }}>
+                              <Icon name="X" size={13} />
+                            </button>
+                          </div>
+                          <div className="pl-7 space-y-1">
+                            {slide.content.map((line, li) => (
+                              <div key={li} className="flex items-center gap-1">
+                                <span className="text-muted-foreground text-xs">•</span>
+                                <input value={line} onChange={e => {
+                                  const newContent = [...slide.content];
+                                  newContent[li] = e.target.value;
+                                  updateSlideContent(idx, newContent);
+                                }}
+                                  onKeyDown={e => {
+                                    if (e.key === "Enter") { const nc = [...slide.content]; nc.splice(li + 1, 0, ""); updateSlideContent(idx, nc); }
+                                    if (e.key === "Backspace" && line === "" && slide.content.length > 1) { const nc = slide.content.filter((_, i) => i !== li); updateSlideContent(idx, nc); }
+                                  }}
+                                  placeholder="Тезис..."
+                                  className="flex-1 px-2 py-1 rounded text-sm text-foreground outline-none"
+                                  style={{ background: "#F8F9FB", border: "1px solid #E0E5EF" }} />
+                                <button onClick={() => { const nc = slide.content.filter((_, i) => i !== li); if (nc.length === 0) nc.push(""); updateSlideContent(idx, nc); }}
+                                  className="w-5 h-5 flex items-center justify-center text-muted-foreground hover:text-red-500 opacity-60">
+                                  <Icon name="X" size={11} />
+                                </button>
+                              </div>
+                            ))}
+                            <button onClick={() => updateSlideContent(idx, [...slide.content, ""])}
+                              className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 mt-1">
+                              <Icon name="Plus" size={11} />Добавить тезис
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {slidesDirty && editingLesson && (
+                    <div className="px-4 py-3 border-t flex items-center justify-between" style={{ borderColor: "#EEF1F7" }}>
+                      <span className="text-xs text-muted-foreground">Есть несохранённые изменения</span>
+                      <button onClick={() => saveSlides(editingLesson.id)} disabled={slidesSaving}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-white transition-all disabled:opacity-50"
+                        style={{ background: "#059669" }}>
+                        {slidesSaving ? <><Icon name="Loader" size={11} className="animate-spin" />Сохранение...</> : <><Icon name="Save" size={11} />Сохранить слайды</>}
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
               <div className="flex gap-3 p-6 border-t border-border/50">
@@ -3350,17 +3533,21 @@ function Watermark({ name }: { name: string }) {
 }
 
 // ─── Presentation Mode ────────────────────────────────────────────────────────
+type PresentSlide = { title: string; content: string[] };
+
 function PresentationMode({ onExit }: { onExit: () => void }) {
-  // ШАГ 1: выбор курса/урока
   const [courses, setCourses] = useState<Course[]>([]);
   const [selectedCourseId, setSelectedCourseId] = useState<number | null>(null);
   const [selectedLessonId, setSelectedLessonId] = useState<number | null>(null);
-  const [slides, setSlides] = useState<Slide[] | null>(null);
   const [loadingCourses, setLoadingCourses] = useState(true);
 
-  // ШАГ 2: презентация
+  // Загруженные слайды из БД
+  const [dbSlides, setDbSlides] = useState<PresentSlide[] | null>(null);
+  const [loadingSlides, setLoadingSlides] = useState(false);
+  const [started, setStarted] = useState(false);
+
+  // Навигация
   const [slideIdx, setSlideIdx] = useState(0);
-  const [listStep, setListStep] = useState(0);
   const [darkTheme, setDarkTheme] = useState(true);
 
   useEffect(() => {
@@ -3396,24 +3583,31 @@ function PresentationMode({ onExit }: { onExit: () => void }) {
   const availableLessons = selectedCourse?.lessons.filter(l => l.status === "published") ?? [];
   const selectedLesson = availableLessons.find(l => l.id === selectedLessonId) ?? null;
 
+  // Загрузка слайдов при выборе урока
+  useEffect(() => {
+    if (!selectedLessonId) { setDbSlides(null); return; }
+    setLoadingSlides(true);
+    setDbSlides(null);
+    API.apiGetSlides(selectedLessonId).then(raw => {
+      const active = (raw as API.SlideData[]).filter(s => s.title !== '__deleted__' && s.title.trim());
+      setDbSlides(active.map(s => ({ title: s.title, content: Array.isArray(s.content) ? s.content : [] })));
+    }).catch(() => setDbSlides([])).finally(() => setLoadingSlides(false));
+  }, [selectedLessonId]);
+
   const handleStart = () => {
-    if (!selectedLesson) return;
-    const generated = parseLessonToSlides({ title: selectedLesson.title, content: selectedLesson.content, summary: selectedLesson.summary });
-    setSlides(generated);
+    if (!selectedLesson || !dbSlides || dbSlides.length === 0) return;
     setSlideIdx(0);
-    setListStep(0);
+    setStarted(true);
   };
 
   const handleExitSlides = () => {
-    setSlides(null);
+    setStarted(false);
     setSlideIdx(0);
-    setListStep(0);
   };
 
   const bg = darkTheme ? "#1B2A4A" : "#FFFFFF";
   const textColor = darkTheme ? "white" : "#1B2A4A";
   const subColor = darkTheme ? "rgba(255,255,255,0.6)" : "rgba(27,42,74,0.5)";
-  const cardBg = darkTheme ? "rgba(255,255,255,0.07)" : "rgba(27,42,74,0.05)";
   const arrowBg = darkTheme ? "rgba(255,255,255,0.15)" : "rgba(27,42,74,0.08)";
   const dotInactive = darkTheme ? "rgba(255,255,255,0.25)" : "rgba(27,42,74,0.18)";
 
@@ -3422,8 +3616,8 @@ function PresentationMode({ onExit }: { onExit: () => void }) {
     else document.exitFullscreen();
   };
 
-  // ─── ШАГ 1: экран выбора ────────────────────────────────────────────────────
-  if (!slides) {
+  // ─── ШАГ 1: экран выбора ──────────────────────────────────────────────────
+  if (!started) {
     return (
       <div className="fixed inset-0 flex flex-col items-center justify-center p-8" style={{ background: "#1B2A4A", zIndex: 9999 }}>
         <div className="w-full max-w-lg">
@@ -3442,11 +3636,9 @@ function PresentationMode({ onExit }: { onExit: () => void }) {
             <div className="space-y-5">
               <div>
                 <label className="text-white/70 text-sm font-medium mb-2 block">Выберите курс</label>
-                <select
-                  value={selectedCourseId ?? ""}
-                  onChange={e => { setSelectedCourseId(Number(e.target.value) || null); setSelectedLessonId(null); }}
+                <select value={selectedCourseId ?? ""} onChange={e => { setSelectedCourseId(Number(e.target.value) || null); setSelectedLessonId(null); }}
                   className="w-full px-4 py-3 rounded-xl text-white text-[15px] outline-none appearance-none cursor-pointer"
-                  style={{ background: "#1B2A4A", border: "1.5px solid rgba(255,255,255,0.15)", color: "white" }}>
+                  style={{ background: "#243558", border: "1.5px solid rgba(255,255,255,0.15)", color: "white" }}>
                   <option value="" style={{ background: "#1B2A4A", color: "white" }}>— выберите курс —</option>
                   {courses.map(c => <option key={c.id} value={c.id} style={{ background: "#1B2A4A", color: "white" }}>{c.title}</option>)}
                 </select>
@@ -3455,26 +3647,39 @@ function PresentationMode({ onExit }: { onExit: () => void }) {
               {selectedCourse && (
                 <div>
                   <label className="text-white/70 text-sm font-medium mb-2 block">Выберите урок</label>
-                  <select
-                    value={selectedLessonId ?? ""}
-                    onChange={e => setSelectedLessonId(Number(e.target.value) || null)}
+                  <select value={selectedLessonId ?? ""} onChange={e => setSelectedLessonId(Number(e.target.value) || null)}
                     className="w-full px-4 py-3 rounded-xl text-white text-[15px] outline-none appearance-none cursor-pointer"
-                    style={{ background: "#1B2A4A", border: "1.5px solid rgba(255,255,255,0.15)", color: "white" }}>
+                    style={{ background: "#243558", border: "1.5px solid rgba(255,255,255,0.15)", color: "white" }}>
                     <option value="" style={{ background: "#1B2A4A", color: "white" }}>— выберите урок —</option>
                     {availableLessons.map(l => <option key={l.id} value={l.id} style={{ background: "#1B2A4A", color: "white" }}>{l.title}</option>)}
                   </select>
                 </div>
               )}
 
+              {/* Статус слайдов */}
+              {selectedLesson && (
+                <div className="rounded-xl p-3 text-sm flex items-center gap-2"
+                  style={{ background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.12)" }}>
+                  {loadingSlides ? (
+                    <><Icon name="Loader" size={14} className="animate-spin text-white/60" /><span className="text-white/60">Загрузка слайдов...</span></>
+                  ) : dbSlides === null ? (
+                    <span className="text-white/50">Выберите урок</span>
+                  ) : dbSlides.length === 0 ? (
+                    <><Icon name="AlertCircle" size={14} style={{ color: "#F4720B" }} /><span className="text-white/70">Презентация не создана. Откройте редактор урока и добавьте слайды.</span></>
+                  ) : (
+                    <><Icon name="CheckCircle" size={14} style={{ color: "#4ADE80" }} /><span className="text-white/80">{dbSlides.length} слайдов готово к показу</span></>
+                  )}
+                </div>
+              )}
+
               <div className="flex gap-3 pt-2">
-                <button onClick={handleStart} disabled={!selectedLesson}
+                <button onClick={handleStart} disabled={!selectedLesson || !dbSlides || dbSlides.length === 0 || loadingSlides}
                   className="flex-1 flex items-center justify-center gap-2 py-3.5 rounded-xl font-semibold text-white transition-all disabled:opacity-40 hover:opacity-90"
                   style={{ background: "#F4720B" }}>
                   <Icon name="Play" size={18} />
                   Начать презентацию
                 </button>
-                <button onClick={onExit}
-                  className="px-5 py-3.5 rounded-xl font-medium transition-all hover:opacity-80"
+                <button onClick={onExit} className="px-5 py-3.5 rounded-xl font-medium transition-all hover:opacity-80"
                   style={{ background: "rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.7)" }}>
                   Выйти
                 </button>
@@ -3486,119 +3691,16 @@ function PresentationMode({ onExit }: { onExit: () => void }) {
     );
   }
 
-  // ─── ШАГ 2: презентация слайдов ─────────────────────────────────────────────
-  const current = slides[slideIdx];
+  // ─── ШАГ 2: презентация слайдов ────────────────────────────────────────────
+  if (!dbSlides || dbSlides.length === 0) return null;
+  const slides = dbSlides;
+  const current = slides[Math.min(slideIdx, slides.length - 1)];
   const totalSlides = slides.length;
 
-  const goNext = () => {
-    if (current.type === "list" && listStep < current.lines.length - 1) {
-      setListStep(s => s + 1);
-    } else {
-      setSlideIdx(s => Math.min(totalSlides - 1, s + 1));
-      setListStep(0);
-    }
-  };
-
-  const goPrev = () => {
-    if (current.type === "list" && listStep > 0) {
-      setListStep(s => s - 1);
-    } else {
-      setSlideIdx(s => Math.max(0, s - 1));
-      setListStep(0);
-    }
-  };
-
-  const isLastStep = current.type === "list" ? listStep >= current.lines.length - 1 : true;
-  const isFirst = slideIdx === 0 && (current.type !== "list" || listStep === 0);
-  const isLast = slideIdx === totalSlides - 1 && isLastStep;
-
-  const renderSlideContent = () => {
-    if (current.type === "title") {
-      return (
-        <div className="flex flex-col items-center justify-center h-full text-center px-8">
-          <div className="text-sm font-medium mb-6 px-4 py-1.5 rounded-full" style={{ background: "rgba(244,114,11,0.2)", color: "#F4720B" }}>
-            {selectedCourse?.title}
-          </div>
-          <h1 className="text-5xl lg:text-6xl font-bold leading-tight" style={{ color: textColor }}>
-            {current.lines[0]}
-          </h1>
-        </div>
-      );
-    }
-
-    if (current.type === "list") {
-      return (
-        <div className="px-8 lg:px-16 py-8 flex flex-col h-full justify-center">
-          {current.heading && (
-            <h2 className="text-2xl lg:text-3xl font-bold mb-8" style={{ color: "#F4720B" }}>{current.heading}</h2>
-          )}
-          <div className="space-y-4">
-            {current.lines.slice(0, listStep + 1).map((item, i) => (
-              <div key={i} className="flex items-start gap-4 animate-fade-in">
-                <span className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold shrink-0" style={{ background: "#F4720B", color: "white" }}>
-                  {i + 1}
-                </span>
-                <span className="text-xl lg:text-2xl leading-relaxed pt-0.5" style={{ color: darkTheme ? "rgba(255,255,255,0.9)" : "rgba(27,42,74,0.85)" }}>
-                  {item}
-                </span>
-              </div>
-            ))}
-          </div>
-          <div className="mt-6 text-sm" style={{ color: subColor }}>
-            {listStep + 1} / {current.lines.length}
-          </div>
-        </div>
-      );
-    }
-
-    if (current.type === "table") {
-      const rows = current.lines.filter(l => !l.match(/^[\s|:-]+$/));
-      return (
-        <div className="px-8 lg:px-16 py-8 flex flex-col h-full justify-center overflow-auto">
-          {current.heading && (
-            <h2 className="text-2xl font-bold mb-6" style={{ color: "#F4720B" }}>{current.heading}</h2>
-          )}
-          <div className="overflow-x-auto rounded-xl" style={{ background: cardBg }}>
-            <table className="w-full text-sm">
-              <tbody>
-                {rows.map((row, ri) => {
-                  const cells = row.split("|").filter(c => c.trim());
-                  return (
-                    <tr key={ri} style={{ borderBottom: `1px solid ${darkTheme ? "rgba(255,255,255,0.08)" : "rgba(27,42,74,0.08)"}` }}>
-                      {cells.map((cell, ci) => (
-                        <td key={ci} className={`px-4 py-3 ${ri === 0 ? "font-semibold" : ""}`}
-                          style={{ color: ri === 0 ? "#F4720B" : textColor }}>
-                          {cell.trim()}
-                        </td>
-                      ))}
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      );
-    }
-
-    // section / summary
-    return (
-      <div className="px-8 lg:px-16 py-8 flex flex-col h-full justify-center">
-        {current.heading && (
-          <h2 className="text-2xl lg:text-3xl font-bold mb-8" style={{ color: current.type === "summary" ? "#F4720B" : textColor }}>
-            {current.heading}
-          </h2>
-        )}
-        <div className="space-y-4">
-          {current.lines.map((line, i) => (
-            <p key={i} className="text-lg lg:text-xl leading-relaxed" style={{ color: darkTheme ? "rgba(255,255,255,0.88)" : "rgba(27,42,74,0.82)" }}>
-              {line}
-            </p>
-          ))}
-        </div>
-      </div>
-    );
-  };
+  const goNext = () => setSlideIdx(s => Math.min(totalSlides - 1, s + 1));
+  const goPrev = () => setSlideIdx(s => Math.max(0, s - 1));
+  const isFirst = slideIdx === 0;
+  const isLast = slideIdx === totalSlides - 1;
 
   return (
     <div className="fixed inset-0 flex flex-col no-copy" style={{ background: bg, zIndex: 9999, transition: "background 0.3s" }}
@@ -3623,54 +3725,53 @@ function PresentationMode({ onExit }: { onExit: () => void }) {
             <Icon name={darkTheme ? "Sun" : "Moon"} size={13} />
             {darkTheme ? "Светлый" : "Тёмный"}
           </button>
-          <button onClick={handleFullscreen}
-            className="w-8 h-8 rounded-xl flex items-center justify-center transition-all"
-            style={{ background: arrowBg, color: textColor }}>
+          <button onClick={handleFullscreen} className="w-8 h-8 rounded-xl flex items-center justify-center transition-all" style={{ background: arrowBg, color: textColor }}>
             <Icon name="Maximize" size={14} />
           </button>
-          <button onClick={handleExitSlides}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium transition-all hover:opacity-80"
-            style={{ background: arrowBg, color: textColor }}>
-            <Icon name="List" size={13} />
-            К выбору
+          <button onClick={handleExitSlides} className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium transition-all hover:opacity-80" style={{ background: arrowBg, color: textColor }}>
+            <Icon name="List" size={13} />К выбору
           </button>
-          <button onClick={onExit}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium text-white transition-all hover:opacity-80"
-            style={{ background: "#F4720B" }}>
-            <Icon name="X" size={13} />
-            Выйти
+          <button onClick={onExit} className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium text-white transition-all hover:opacity-80" style={{ background: "#F4720B" }}>
+            <Icon name="X" size={13} />Выйти
           </button>
         </div>
       </div>
 
       {/* Контент слайда */}
-      <div className="flex-1 overflow-hidden" key={`${slideIdx}-${listStep}`} style={{ animation: "fadeIn 0.25s ease" }}>
-        {renderSlideContent()}
+      <div className="flex-1 flex flex-col items-center justify-center px-8 lg:px-16 py-10" key={slideIdx} style={{ animation: "fadeIn 0.25s ease" }}>
+        <div className="w-full max-w-4xl">
+          {current.title && (
+            <h2 className="text-3xl lg:text-4xl font-bold mb-8 leading-tight" style={{ color: slideIdx === 0 ? "#F4720B" : textColor }}>
+              {current.title}
+            </h2>
+          )}
+          <div className="space-y-4">
+            {current.content.filter(l => l.trim()).map((line, i) => (
+              <div key={i} className="flex items-start gap-4 animate-fade-in">
+                <span className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold shrink-0 mt-0.5" style={{ background: "#F4720B", color: "white" }}>
+                  {i + 1}
+                </span>
+                <span className="text-xl lg:text-2xl leading-relaxed pt-0.5" style={{ color: darkTheme ? "rgba(255,255,255,0.9)" : "rgba(27,42,74,0.85)" }}>
+                  {line}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
 
-      {/* Нижняя панель навигации */}
+      {/* Нижняя навигация */}
       <div className="flex items-center justify-between px-6 py-4 shrink-0" style={{ borderTop: `1px solid ${darkTheme ? "rgba(255,255,255,0.08)" : "rgba(27,42,74,0.08)"}` }}>
-        <button onClick={goPrev} disabled={isFirst}
-          className="flex items-center gap-2 px-5 py-2.5 rounded-xl font-medium text-sm transition-all disabled:opacity-30"
-          style={{ background: arrowBg, color: textColor }}>
+        <button onClick={goPrev} disabled={isFirst} className="flex items-center gap-2 px-5 py-2.5 rounded-xl font-medium text-sm transition-all disabled:opacity-30" style={{ background: arrowBg, color: textColor }}>
           <Icon name="ChevronLeft" size={16} />Назад
         </button>
-
-        {/* Точки прогресса */}
         <div className="flex gap-1.5 overflow-hidden max-w-[50%]">
           {slides.map((_, i) => (
-            <button key={i} onClick={() => { setSlideIdx(i); setListStep(0); }}
-              className="rounded-full transition-all shrink-0"
-              style={{
-                width: i === slideIdx ? 20 : 8, height: 8,
-                background: i === slideIdx ? "#F4720B" : dotInactive,
-              }} />
+            <button key={i} onClick={() => setSlideIdx(i)} className="rounded-full transition-all shrink-0"
+              style={{ width: i === slideIdx ? 20 : 8, height: 8, background: i === slideIdx ? "#F4720B" : dotInactive }} />
           ))}
         </div>
-
-        <button onClick={goNext} disabled={isLast}
-          className="flex items-center gap-2 px-5 py-2.5 rounded-xl font-medium text-sm text-white transition-all disabled:opacity-30"
-          style={{ background: "#F4720B" }}>
+        <button onClick={goNext} disabled={isLast} className="flex items-center gap-2 px-5 py-2.5 rounded-xl font-medium text-sm text-white transition-all disabled:opacity-30" style={{ background: "#F4720B" }}>
           Далее<Icon name="ChevronRight" size={16} />
         </button>
       </div>

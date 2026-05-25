@@ -613,6 +613,80 @@ def handler(event: dict, context) -> dict:
         conn.close()
         return ok({'ok': True})
 
+    # ── SLIDES ─────────────────────────────────────────────────────────────────
+    # GET /slides?lesson_id=X
+    if path == '/slides' and method == 'GET':
+        lid = qs.get('lesson_id')
+        conn = db()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("SELECT * FROM psa_slides WHERE lesson_id=%s ORDER BY sort_order, id", (lid,))
+        rows = [dict(r) for r in cur.fetchall()]
+        conn.close()
+        return ok(rows)
+
+    # POST /slides — создать слайд
+    if path == '/slides' and method == 'POST':
+        conn = db()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("SELECT COALESCE(MAX(sort_order),0)+1 as next FROM psa_slides WHERE lesson_id=%s", (body.get('lesson_id'),))
+        next_order = cur.fetchone()['next']
+        cur.execute(
+            "INSERT INTO psa_slides (lesson_id, title, content, sort_order) VALUES (%s,%s,%s,%s) RETURNING *",
+            (body.get('lesson_id'), body.get('title',''), json.dumps(body.get('content', [])), next_order)
+        )
+        slide = dict(cur.fetchone())
+        conn.commit()
+        conn.close()
+        return ok(slide, 201)
+
+    # PATCH /slides/{id} — обновить слайд
+    if path.startswith('/slides/') and method == 'PATCH':
+        sid = path.split('/')[2]
+        sets, vals = [], []
+        if 'title' in body:
+            sets.append('title=%s'); vals.append(body['title'])
+        if 'content' in body:
+            sets.append('content=%s'); vals.append(json.dumps(body['content']))
+        if 'sort_order' in body:
+            sets.append('sort_order=%s'); vals.append(body['sort_order'])
+        if sets:
+            vals.append(sid)
+            conn = db()
+            cur = conn.cursor()
+            cur.execute(f"UPDATE psa_slides SET {', '.join(sets)} WHERE id=%s", vals)
+            conn.commit()
+            conn.close()
+        return ok({'ok': True})
+
+    # DELETE /slides/{id} — пометить как удалённый (ставим sort_order=-1, title='__deleted__')
+    if path.startswith('/slides/') and method == 'DELETE':
+        sid = path.split('/')[2]
+        conn = db()
+        cur = conn.cursor()
+        cur.execute("UPDATE psa_slides SET title='__deleted__', sort_order=-1 WHERE id=%s", (sid,))
+        conn.commit()
+        conn.close()
+        return ok({'ok': True})
+
+    # POST /slides/batch — массовое сохранение (полная замена слайдов урока)
+    if path == '/slides/batch' and method == 'POST':
+        lid = body.get('lesson_id')
+        slides = body.get('slides', [])
+        conn = db()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        # Мягко удаляем старые слайды
+        cur.execute("UPDATE psa_slides SET title='__deleted__' WHERE lesson_id=%s", (lid,))
+        result = []
+        for i, s in enumerate(slides):
+            cur.execute(
+                "INSERT INTO psa_slides (lesson_id, title, content, sort_order) VALUES (%s,%s,%s,%s) RETURNING *",
+                (lid, s.get('title',''), json.dumps(s.get('content',[])), i)
+            )
+            result.append(dict(cur.fetchone()))
+        conn.commit()
+        conn.close()
+        return ok(result)
+
     # ── DIRECT MESSAGES ────────────────────────────────────────────────────────
     # GET /dm/dialogs?user_id=X — список диалогов пользователя
     if path == '/dm/dialogs' and method == 'GET':

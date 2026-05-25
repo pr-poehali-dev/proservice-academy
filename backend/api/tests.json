@@ -36,6 +36,14 @@
       "bodyMatcher": "partial"
     },
     {
+      "name": "Get slides for lesson",
+      "method": "POST",
+      "path": "/",
+      "body": {"_method": "GET", "_path": "/slides?lesson_id=1"},
+      "expectedStatus": 200,
+      "bodyMatcher": "partial"
+    },
+    {
       "name": "Get student stats",
       "method": "POST",
       "path": "/",
